@@ -102,7 +102,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Where will the user is able to type?"
+          placeholder="Message HeftCoder"
           disabled={disabled}
           className="w-full min-h-[56px] max-h-[300px] resize-none bg-transparent border-0 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0 text-base leading-relaxed"
           rows={1}
