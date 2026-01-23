@@ -3,6 +3,8 @@ import { TopNav } from './TopNav';
 import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
+import { AgentPanel } from './AgentPanel';
+import { useOrchestrator } from '@/hooks/useOrchestrator';
 import type { Message, Attachment, AIModel, ProjectStatus, UserTier } from '@/types/workspace';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
@@ -12,6 +14,8 @@ export function WorkspaceEditor() {
   const [isLoading, setIsLoading] = useState(false);
   const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
   const [userTier] = useState<UserTier>('pro'); // Mock user tier
+  
+  const { agents, isRunning, runOrchestrator } = useOrchestrator();
 
   const handleSendMessage = useCallback(
     async (content: string, attachments: Attachment[], model: AIModel) => {
@@ -27,40 +31,30 @@ export function WorkspaceEditor() {
       setIsLoading(true);
       setProjectStatus({ status: 'working' });
 
-      // Simulate AI response
-      setTimeout(() => {
-        const aiMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: `I'll help you build that using ${model.name}. Here's what I'm creating:
+      // Start the 6-agent orchestrator
+      runOrchestrator(content);
 
-\`\`\`typescript
-// Setting up your project structure
-import React from 'react';
+      // Add initial AI message
+      const aiMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `I'm orchestrating 6 specialized agents to build your project using ${model.name}:
 
-export default function App() {
-  return (
-    <div className="min-h-screen bg-gray-900">
-      <h1>Your Project</h1>
-    </div>
-  );
-}
-\`\`\`
+• **Architect** - Designing system structure
+• **Backend** - Building APIs and database
+• **Frontend** - Creating UI components
+• **Integrator** - Connecting all pieces
+• **QA** - Testing and validation
+• **DevOps** - Preparing deployment
 
-I'm now generating your project. You can see the live preview on the right panel.`,
-          timestamp: new Date(),
-        };
+Watch the agents work in real-time on the right panel.`,
+        timestamp: new Date(),
+      };
 
-        setMessages((prev) => [...prev, aiMessage]);
-        setIsLoading(false);
-        
-        // Simulate project completion after a delay
-        setTimeout(() => {
-          setProjectStatus({ status: 'complete' });
-        }, 2000);
-      }, 1500);
+      setMessages((prev) => [...prev, aiMessage]);
+      setIsLoading(false);
     },
-    []
+    [runOrchestrator]
   );
 
   return (
@@ -82,7 +76,18 @@ I'm now generating your project. You can see the live preview on the right panel
         <ResizableHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
 
         <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
-          <PreviewPanel status={projectStatus} />
+          <div className="h-full flex flex-col">
+            {/* Agent Orchestra Panel */}
+            {(Object.keys(agents).length > 0 || isRunning) && (
+              <div className="border-b border-border bg-card">
+                <AgentPanel agents={agents} isRunning={isRunning} />
+              </div>
+            )}
+            {/* Preview Panel */}
+            <div className="flex-1">
+              <PreviewPanel status={isRunning ? { status: 'working' } : projectStatus} />
+            </div>
+          </div>
         </ResizablePanel>
       </ResizablePanelGroup>
 
