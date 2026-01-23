@@ -26,3 +26,19 @@ export interface ProjectStatus {
 }
 
 export type UserTier = 'basic' | 'plus' | 'pro' | 'studio';
+
+export type ProjectType = 'landing' | 'webapp' | 'native';
+
+export interface GeneratedFile {
+  path: string;
+  content: string;
+  language: string;
+}
+
+export interface GeneratedProject {
+  type: ProjectType;
+  name: string;
+  files: GeneratedFile[];
+  entryHtml?: string;
+  previewHtml?: string;
+}
