@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Shimmer animation for active agents */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+}
+
 /* HeftCoder Design System - Dark Theme */
 
 @layer base {

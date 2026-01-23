@@ -3,12 +3,23 @@ import type { AgentInfo, OrchestratorEvent, ProjectPlan, OrchestratorPhase } fro
 
 const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orchestrator`;
 
+export interface OrchestratorState {
+  agents: Record<string, AgentInfo>;
+  phase: OrchestratorPhase;
+  plan: ProjectPlan | null;
+  error: string | null;
+  summary: string | null;
+  streamingOutput: Record<string, string>;
+}
+
 export function useOrchestrator() {
   const [agents, setAgents] = useState<Record<string, AgentInfo>>({});
   const [phase, setPhase] = useState<OrchestratorPhase>("idle");
   const [plan, setPlan] = useState<ProjectPlan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [originalMessage, setOriginalMessage] = useState<string>("");
+  const [streamingOutput, setStreamingOutput] = useState<Record<string, string>>({});
 
   const streamEvents = useCallback(async (url: string, body: object) => {
     const response = await fetch(url, {
@@ -52,6 +63,7 @@ export function useOrchestrator() {
           
           if (event.type === "agents_init") {
             setAgents(event.agents);
+            setStreamingOutput({});
           } else if (event.type === "agent_status") {
             setAgents(prev => ({
               ...prev,
@@ -62,11 +74,17 @@ export function useOrchestrator() {
                 output: event.output || prev[event.agent]?.output,
               },
             }));
+          } else if (event.type === "agent_stream") {
+            setStreamingOutput(prev => ({
+              ...prev,
+              [event.agent]: event.output,
+            }));
           } else if (event.type === "plan_ready") {
             setPlan(event.plan);
             setPhase("awaiting_approval");
           } else if (event.type === "complete") {
             setAgents(event.agents);
+            setSummary(event.summary || null);
             setPhase("complete");
           } else if (event.type === "error") {
             setError(event.message);
@@ -84,7 +102,9 @@ export function useOrchestrator() {
     setPhase("planning");
     setError(null);
     setPlan(null);
+    setSummary(null);
     setOriginalMessage(message);
+    setStreamingOutput({});
     
     // Initialize architect as thinking
     setAgents({
@@ -114,6 +134,7 @@ export function useOrchestrator() {
     
     setPhase("building");
     setError(null);
+    setStreamingOutput({});
 
     try {
       await streamEvents(ORCHESTRATOR_URL, { 
@@ -132,7 +153,9 @@ export function useOrchestrator() {
     setPlan(null);
     setPhase("idle");
     setError(null);
+    setSummary(null);
     setOriginalMessage("");
+    setStreamingOutput({});
   }, []);
 
   return {
@@ -140,6 +163,8 @@ export function useOrchestrator() {
     phase,
     plan,
     error,
+    summary,
+    streamingOutput,
     requestPlan,
     approvePlan,
     reset,

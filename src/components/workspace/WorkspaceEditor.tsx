@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { TopNav } from './TopNav';
 import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
@@ -15,10 +15,51 @@ export function WorkspaceEditor() {
   const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
   const [userTier] = useState<UserTier>('pro');
   
-  const { agents, phase, plan, error, requestPlan, approvePlan, reset } = useOrchestrator();
+  const { 
+    agents, 
+    phase, 
+    plan, 
+    error, 
+    summary,
+    streamingOutput,
+    requestPlan, 
+    approvePlan, 
+    reset 
+  } = useOrchestrator();
+
+  // Update messages when build completes
+  useEffect(() => {
+    if (phase === "complete" && summary) {
+      const summaryMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `## ✅ Build Complete!\n\n${summary}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, summaryMessage]);
+      setProjectStatus({ status: 'complete' });
+    }
+  }, [phase, summary]);
+
+  // Handle errors
+  useEffect(() => {
+    if (phase === "error" && error) {
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `## ❌ Build Error\n\n${error}\n\nPlease try again or modify your request.`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      setProjectStatus({ status: 'error', message: error });
+    }
+  }, [phase, error]);
 
   const handleSendMessage = useCallback(
     async (content: string, attachments: Attachment[], model: AIModel) => {
+      // Reset orchestrator for new request
+      reset();
+      
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -27,7 +68,7 @@ export function WorkspaceEditor() {
         attachments,
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      setMessages(prev => [...prev, userMessage]);
       setIsLoading(true);
       setProjectStatus({ status: 'working' });
 
@@ -38,14 +79,14 @@ export function WorkspaceEditor() {
       const planningMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `Analyzing your request and creating a build plan...`,
+        content: `🤔 Analyzing your request...\n\nI'm designing the architecture and creating a build plan for your project. This will just take a moment.`,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, planningMessage]);
+      setMessages(prev => [...prev, planningMessage]);
       setIsLoading(false);
     },
-    [requestPlan]
+    [requestPlan, reset]
   );
 
   const handleApprove = useCallback(async () => {
@@ -53,10 +94,11 @@ export function WorkspaceEditor() {
     const approvalMessage: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `Starting build process...`,
+      content: `🚀 **Starting build process...**\n\nThe agent orchestra is now working on your project. Watch the progress panel to see each agent's status.`,
       timestamp: new Date(),
     };
-    setMessages((prev) => [...prev, approvalMessage]);
+    setMessages(prev => [...prev, approvalMessage]);
+    setProjectStatus({ status: 'working' });
     
     approvePlan();
   }, [approvePlan]);
@@ -71,7 +113,7 @@ export function WorkspaceEditor() {
       />
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
+        <ResizablePanel defaultSize={45} minSize={30} maxSize={60}>
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -79,23 +121,24 @@ export function WorkspaceEditor() {
           />
         </ResizablePanel>
 
-        <ResizableHandle className="w-1 bg-border hover:bg-primary/50 transition-colors" />
+        <ResizableHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors data-[resize-handle-active]:bg-primary" />
 
-        <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
-          <div className="h-full flex flex-col">
+        <ResizablePanel defaultSize={55} minSize={40} maxSize={70}>
+          <div className="h-full flex flex-col overflow-hidden">
             {/* Agent Orchestra Panel */}
             {phase !== "idle" && (
-              <div className="border-b border-border bg-card">
+              <div className="border-b border-border bg-card/50 backdrop-blur-sm max-h-[50%] overflow-y-auto scrollbar-thin">
                 <AgentPanel 
                   agents={agents} 
                   phase={phase} 
                   plan={plan}
                   onApprove={handleApprove}
+                  streamingOutput={streamingOutput}
                 />
               </div>
             )}
             {/* Preview Panel */}
-            <div className="flex-1">
+            <div className="flex-1 min-h-0">
               <PreviewPanel status={isActive ? { status: 'working' } : projectStatus} />
             </div>
           </div>
