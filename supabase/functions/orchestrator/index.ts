@@ -5,18 +5,40 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface PlanStep {
+  id: string;
+  agent: string;
+  task: string;
+  dependencies: string[];
+}
+
+interface ProjectPlan {
+  projectName: string;
+  description: string;
+  techStack: {
+    frontend: string[];
+    backend: string[];
+    database: string;
+  };
+  steps: PlanStep[];
+  estimatedTime: string;
+}
+
+type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
+
 interface AgentTask {
   agentId: string;
   agentName: string;
   role: string;
-  status: "pending" | "working" | "complete" | "error";
+  status: AgentStatus;
+  statusLabel?: string;
   output?: string;
 }
 
 const AGENTS = {
   architect: {
     id: Deno.env.get("AGENT_ARCHITECT_ID"),
-    name: "Architect",
+    name: "Planner",
     role: "System design and project structure",
   },
   backend: {
@@ -46,12 +68,42 @@ const AGENTS = {
   },
 };
 
-async function callLangdockAgent(agentId: string, message: string): Promise<string> {
+const PLANNER_SYSTEM_PROMPT = `You are a project planner. When given a project request, output ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+
+{
+  "projectName": "string",
+  "description": "Brief 1-sentence description",
+  "techStack": {
+    "frontend": ["React", "TypeScript", "Tailwind"],
+    "backend": ["Supabase", "Edge Functions"],
+    "database": "PostgreSQL"
+  },
+  "steps": [
+    {"id": "1", "agent": "backend", "task": "Create database schema", "dependencies": []},
+    {"id": "2", "agent": "backend", "task": "Build API endpoints", "dependencies": ["1"]},
+    {"id": "3", "agent": "frontend", "task": "Create UI components", "dependencies": []},
+    {"id": "4", "agent": "integrator", "task": "Connect frontend to API", "dependencies": ["2", "3"]},
+    {"id": "5", "agent": "qa", "task": "Run tests", "dependencies": ["4"]},
+    {"id": "6", "agent": "devops", "task": "Deploy application", "dependencies": ["5"]}
+  ],
+  "estimatedTime": "X minutes"
+}
+
+Output ONLY the JSON. No other text.`;
+
+async function callLangdockAgent(agentId: string, message: string, systemPrompt?: string): Promise<string> {
   const apiKey = Deno.env.get("LANGDOCK_API_KEY");
   
   if (!apiKey) {
     throw new Error("LANGDOCK_API_KEY is not configured");
   }
+
+  const messages = systemPrompt 
+    ? [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
+      ]
+    : [{ role: "user", content: message }];
 
   const response = await fetch(`https://api.langdock.com/assistant/v1/chat/${agentId}`, {
     method: "POST",
@@ -60,7 +112,7 @@ async function callLangdockAgent(agentId: string, message: string): Promise<stri
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      messages: [{ role: "user", content: message }],
+      messages,
       stream: false,
     }),
   });
@@ -75,13 +127,27 @@ async function callLangdockAgent(agentId: string, message: string): Promise<stri
   return data.choices?.[0]?.message?.content || "No response";
 }
 
+function parsePlanFromResponse(response: string): ProjectPlan | null {
+  try {
+    // Try to extract JSON from the response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as ProjectPlan;
+    }
+    return JSON.parse(response) as ProjectPlan;
+  } catch {
+    console.error("Failed to parse plan:", response);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { message, stream } = await req.json();
+    const { action, message, plan } = await req.json();
 
     if (!message) {
       return new Response(
@@ -90,153 +156,297 @@ serve(async (req) => {
       );
     }
 
-    // For streaming, we'll send agent status updates
-    if (stream) {
-      const encoder = new TextEncoder();
-      const body = new ReadableStream({
-        async start(controller) {
-          const send = (data: object) => {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-          };
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      async start(controller) {
+        const send = (data: object) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+        };
 
-          // Initialize all agents as pending
-          const agentTasks: Record<string, AgentTask> = {};
-          for (const [key, agent] of Object.entries(AGENTS)) {
-            agentTasks[key] = {
-              agentId: agent.id || "",
-              agentName: agent.name,
-              role: agent.role,
-              status: "pending",
-            };
-          }
+        // ========== PLAN ACTION ==========
+        if (action === "plan") {
+          // Only architect works during planning
+          send({ 
+            type: "agent_status", 
+            agent: "architect", 
+            status: "thinking",
+            statusLabel: "Analyzing requirements..."
+          });
 
-          send({ type: "agents_init", agents: agentTasks });
-
-          // Phase 1: Architect designs the system
-          send({ type: "agent_status", agent: "architect", status: "working" });
           try {
             const architectOutput = await callLangdockAgent(
               AGENTS.architect.id!,
-              `Design a system architecture for: ${message}`
+              `Create a project plan for: ${message}`,
+              PLANNER_SYSTEM_PROMPT
             );
-            agentTasks.architect.status = "complete";
-            agentTasks.architect.output = architectOutput;
-            send({ type: "agent_status", agent: "architect", status: "complete", output: architectOutput });
+
+            const parsedPlan = parsePlanFromResponse(architectOutput);
+            
+            if (parsedPlan) {
+              send({ 
+                type: "agent_status", 
+                agent: "architect", 
+                status: "complete",
+                statusLabel: "Plan ready"
+              });
+              send({ type: "plan_ready", plan: parsedPlan });
+            } else {
+              // Fallback: create a default plan structure
+              const defaultPlan: ProjectPlan = {
+                projectName: "Project",
+                description: message,
+                techStack: {
+                  frontend: ["React", "TypeScript", "Tailwind"],
+                  backend: ["Supabase"],
+                  database: "PostgreSQL"
+                },
+                steps: [
+                  { id: "1", agent: "backend", task: "Setup database", dependencies: [] },
+                  { id: "2", agent: "frontend", task: "Build UI", dependencies: [] },
+                  { id: "3", agent: "integrator", task: "Connect components", dependencies: ["1", "2"] },
+                  { id: "4", agent: "qa", task: "Test application", dependencies: ["3"] },
+                  { id: "5", agent: "devops", task: "Deploy", dependencies: ["4"] },
+                ],
+                estimatedTime: "5 minutes"
+              };
+              send({ 
+                type: "agent_status", 
+                agent: "architect", 
+                status: "complete",
+                statusLabel: "Plan ready"
+              });
+              send({ type: "plan_ready", plan: defaultPlan });
+            }
           } catch (err) {
-            agentTasks.architect.status = "error";
-            send({ type: "agent_status", agent: "architect", status: "error", error: err instanceof Error ? err.message : "Unknown error" });
+            send({ 
+              type: "error", 
+              message: err instanceof Error ? err.message : "Planning failed" 
+            });
           }
 
-          // Phase 2: Backend and Frontend work in parallel
-          send({ type: "agent_status", agent: "backend", status: "working" });
-          send({ type: "agent_status", agent: "frontend", status: "working" });
-
-          const [backendResult, frontendResult] = await Promise.allSettled([
-            callLangdockAgent(
-              AGENTS.backend.id!,
-              `Based on this architecture, implement the backend: ${agentTasks.architect.output || message}`
-            ),
-            callLangdockAgent(
-              AGENTS.frontend.id!,
-              `Based on this architecture, implement the frontend: ${agentTasks.architect.output || message}`
-            ),
-          ]);
-
-          if (backendResult.status === "fulfilled") {
-            agentTasks.backend.status = "complete";
-            agentTasks.backend.output = backendResult.value;
-            send({ type: "agent_status", agent: "backend", status: "complete", output: backendResult.value });
-          } else {
-            agentTasks.backend.status = "error";
-            send({ type: "agent_status", agent: "backend", status: "error", error: backendResult.reason?.message });
-          }
-
-          if (frontendResult.status === "fulfilled") {
-            agentTasks.frontend.status = "complete";
-            agentTasks.frontend.output = frontendResult.value;
-            send({ type: "agent_status", agent: "frontend", status: "complete", output: frontendResult.value });
-          } else {
-            agentTasks.frontend.status = "error";
-            send({ type: "agent_status", agent: "frontend", status: "error", error: frontendResult.reason?.message });
-          }
-
-          // Phase 3: Integrator connects everything
-          send({ type: "agent_status", agent: "integrator", status: "working" });
-          try {
-            const integratorOutput = await callLangdockAgent(
-              AGENTS.integrator.id!,
-              `Integrate these components:\nBackend: ${agentTasks.backend.output}\nFrontend: ${agentTasks.frontend.output}`
-            );
-            agentTasks.integrator.status = "complete";
-            agentTasks.integrator.output = integratorOutput;
-            send({ type: "agent_status", agent: "integrator", status: "complete", output: integratorOutput });
-          } catch (err) {
-            agentTasks.integrator.status = "error";
-            send({ type: "agent_status", agent: "integrator", status: "error", error: err instanceof Error ? err.message : "Unknown error" });
-          }
-
-          // Phase 4: QA and DevOps work in parallel
-          send({ type: "agent_status", agent: "qa", status: "working" });
-          send({ type: "agent_status", agent: "devops", status: "working" });
-
-          const [qaResult, devopsResult] = await Promise.allSettled([
-            callLangdockAgent(
-              AGENTS.qa.id!,
-              `Test this integrated system: ${agentTasks.integrator.output || message}`
-            ),
-            callLangdockAgent(
-              AGENTS.devops.id!,
-              `Prepare deployment for: ${agentTasks.integrator.output || message}`
-            ),
-          ]);
-
-          if (qaResult.status === "fulfilled") {
-            agentTasks.qa.status = "complete";
-            agentTasks.qa.output = qaResult.value;
-            send({ type: "agent_status", agent: "qa", status: "complete", output: qaResult.value });
-          } else {
-            agentTasks.qa.status = "error";
-            send({ type: "agent_status", agent: "qa", status: "error", error: qaResult.reason?.message });
-          }
-
-          if (devopsResult.status === "fulfilled") {
-            agentTasks.devops.status = "complete";
-            agentTasks.devops.output = devopsResult.value;
-            send({ type: "agent_status", agent: "devops", status: "complete", output: devopsResult.value });
-          } else {
-            agentTasks.devops.status = "error";
-            send({ type: "agent_status", agent: "devops", status: "error", error: devopsResult.reason?.message });
-          }
-
-          // Final summary
-          send({ type: "complete", agents: agentTasks });
           send({ type: "[DONE]" });
           controller.close();
-        },
-      });
-
-      return new Response(body, {
-        headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
-      });
-    }
-
-    // Non-streaming: run all agents sequentially and return final result
-    const results: Record<string, string> = {};
-    
-    for (const [key, agent] of Object.entries(AGENTS)) {
-      if (agent.id) {
-        try {
-          results[key] = await callLangdockAgent(agent.id, message);
-        } catch (err) {
-          results[key] = `Error: ${err instanceof Error ? err.message : "Unknown error"}`;
+          return;
         }
-      }
-    }
 
-    return new Response(
-      JSON.stringify({ success: true, results }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+        // ========== EXECUTE ACTION ==========
+        if (action === "execute") {
+          const executionPlan = plan as ProjectPlan;
+          
+          // Initialize all builder agents
+          const agentTasks: Record<string, AgentTask> = {
+            backend: {
+              agentId: AGENTS.backend.id || "",
+              agentName: "Backend",
+              role: "API and database",
+              status: "idle",
+            },
+            frontend: {
+              agentId: AGENTS.frontend.id || "",
+              agentName: "Frontend", 
+              role: "UI components",
+              status: "idle",
+            },
+            integrator: {
+              agentId: AGENTS.integrator.id || "",
+              agentName: "Integrator",
+              role: "Connect systems",
+              status: "idle",
+            },
+            qa: {
+              agentId: AGENTS.qa.id || "",
+              agentName: "QA",
+              role: "Testing",
+              status: "idle",
+            },
+            devops: {
+              agentId: AGENTS.devops.id || "",
+              agentName: "DevOps",
+              role: "Deployment",
+              status: "idle",
+            },
+          };
+
+          send({ type: "agents_init", agents: agentTasks });
+
+          // Execute steps based on plan
+          const completedSteps = new Set<string>();
+          const stepsByAgent: Record<string, PlanStep[]> = {};
+          
+          for (const step of executionPlan.steps) {
+            if (!stepsByAgent[step.agent]) {
+              stepsByAgent[step.agent] = [];
+            }
+            stepsByAgent[step.agent].push(step);
+          }
+
+          // Phase 1: Backend & Frontend in parallel (no dependencies)
+          const phase1Agents = ["backend", "frontend"].filter(a => stepsByAgent[a]?.length);
+          
+          for (const agent of phase1Agents) {
+            send({ 
+              type: "agent_status", 
+              agent, 
+              status: "installing",
+              statusLabel: "Installing dependencies..."
+            });
+          }
+
+          // Simulate brief install time then start creating
+          await new Promise(r => setTimeout(r, 500));
+
+          for (const agent of phase1Agents) {
+            send({ 
+              type: "agent_status", 
+              agent, 
+              status: "creating",
+              statusLabel: "Creating files..."
+            });
+          }
+
+          const phase1Results = await Promise.allSettled(
+            phase1Agents.map(async (agent) => {
+              const steps = stepsByAgent[agent] || [];
+              const taskDescription = steps.map(s => s.task).join(", ");
+              const output = await callLangdockAgent(
+                AGENTS[agent as keyof typeof AGENTS].id!,
+                `Execute: ${taskDescription}\nContext: ${message}`
+              );
+              return { agent, output };
+            })
+          );
+
+          for (const result of phase1Results) {
+            if (result.status === "fulfilled") {
+              const { agent, output } = result.value;
+              agentTasks[agent].status = "complete";
+              agentTasks[agent].output = output;
+              send({ 
+                type: "agent_status", 
+                agent, 
+                status: "complete",
+                statusLabel: "Done",
+                output 
+              });
+              stepsByAgent[agent]?.forEach(s => completedSteps.add(s.id));
+            } else {
+              const agent = phase1Agents[phase1Results.indexOf(result)];
+              send({ 
+                type: "agent_status", 
+                agent, 
+                status: "error",
+                statusLabel: "Failed"
+              });
+            }
+          }
+
+          // Phase 2: Integrator
+          if (stepsByAgent["integrator"]?.length) {
+            send({ 
+              type: "agent_status", 
+              agent: "integrator", 
+              status: "creating",
+              statusLabel: "Connecting components..."
+            });
+
+            try {
+              const integratorOutput = await callLangdockAgent(
+                AGENTS.integrator.id!,
+                `Integrate:\nBackend: ${agentTasks.backend.output}\nFrontend: ${agentTasks.frontend.output}`
+              );
+              agentTasks.integrator.status = "complete";
+              agentTasks.integrator.output = integratorOutput;
+              send({ 
+                type: "agent_status", 
+                agent: "integrator", 
+                status: "complete",
+                statusLabel: "Done",
+                output: integratorOutput 
+              });
+            } catch {
+              send({ 
+                type: "agent_status", 
+                agent: "integrator", 
+                status: "error",
+                statusLabel: "Failed"
+              });
+            }
+          }
+
+          // Phase 3: QA & DevOps in parallel
+          const phase3Agents = ["qa", "devops"].filter(a => stepsByAgent[a]?.length);
+
+          if (phase3Agents.includes("qa")) {
+            send({ 
+              type: "agent_status", 
+              agent: "qa", 
+              status: "testing",
+              statusLabel: "Running tests..."
+            });
+          }
+          if (phase3Agents.includes("devops")) {
+            send({ 
+              type: "agent_status", 
+              agent: "devops", 
+              status: "deploying",
+              statusLabel: "Preparing deployment..."
+            });
+          }
+
+          const phase3Results = await Promise.allSettled(
+            phase3Agents.map(async (agent) => {
+              const output = await callLangdockAgent(
+                AGENTS[agent as keyof typeof AGENTS].id!,
+                `${agent === "qa" ? "Test" : "Deploy"}: ${agentTasks.integrator.output || message}`
+              );
+              return { agent, output };
+            })
+          );
+
+          for (const result of phase3Results) {
+            if (result.status === "fulfilled") {
+              const { agent, output } = result.value;
+              agentTasks[agent].status = "complete";
+              agentTasks[agent].output = output;
+              send({ 
+                type: "agent_status", 
+                agent, 
+                status: "complete",
+                statusLabel: "Done",
+                output 
+              });
+            } else {
+              const agent = phase3Agents[phase3Results.indexOf(result)];
+              send({ 
+                type: "agent_status", 
+                agent, 
+                status: "error",
+                statusLabel: "Failed"
+              });
+            }
+          }
+
+          // Complete
+          send({ 
+            type: "complete", 
+            agents: agentTasks,
+            summary: "Project build complete!"
+          });
+          send({ type: "[DONE]" });
+          controller.close();
+          return;
+        }
+
+        // Unknown action
+        send({ type: "error", message: "Unknown action" });
+        send({ type: "[DONE]" });
+        controller.close();
+      },
+    });
+
+    return new Response(body, {
+      headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
+    });
   } catch (e) {
     console.error("Orchestrator error:", e);
     return new Response(
