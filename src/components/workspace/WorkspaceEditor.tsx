@@ -13,9 +13,9 @@ export function WorkspaceEditor() {
   const [projectStatus, setProjectStatus] = useState<ProjectStatus>({ status: 'idle' });
   const [isLoading, setIsLoading] = useState(false);
   const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
-  const [userTier] = useState<UserTier>('pro'); // Mock user tier
+  const [userTier] = useState<UserTier>('pro');
   
-  const { agents, isRunning, runOrchestrator } = useOrchestrator();
+  const { agents, phase, plan, error, requestPlan, approvePlan, reset } = useOrchestrator();
 
   const handleSendMessage = useCallback(
     async (content: string, attachments: Attachment[], model: AIModel) => {
@@ -31,31 +31,37 @@ export function WorkspaceEditor() {
       setIsLoading(true);
       setProjectStatus({ status: 'working' });
 
-      // Start the 6-agent orchestrator
-      runOrchestrator(content);
+      // Start planning phase
+      requestPlan(content);
 
-      // Add initial AI message
-      const aiMessage: Message = {
+      // Add planning message
+      const planningMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `I'm orchestrating 6 specialized agents to build your project using ${model.name}:
-
-• **Architect** - Designing system structure
-• **Backend** - Building APIs and database
-• **Frontend** - Creating UI components
-• **Integrator** - Connecting all pieces
-• **QA** - Testing and validation
-• **DevOps** - Preparing deployment
-
-Watch the agents work in real-time on the right panel.`,
+        content: `Analyzing your request and creating a build plan...`,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, aiMessage]);
+      setMessages((prev) => [...prev, planningMessage]);
       setIsLoading(false);
     },
-    [runOrchestrator]
+    [requestPlan]
   );
+
+  const handleApprove = useCallback(async () => {
+    // Add approval message
+    const approvalMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `Starting build process...`,
+      timestamp: new Date(),
+    };
+    setMessages((prev) => [...prev, approvalMessage]);
+    
+    approvePlan();
+  }, [approvePlan]);
+
+  const isActive = phase !== "idle" && phase !== "complete" && phase !== "error";
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -78,14 +84,19 @@ Watch the agents work in real-time on the right panel.`,
         <ResizablePanel defaultSize={50} minSize={30} maxSize={70}>
           <div className="h-full flex flex-col">
             {/* Agent Orchestra Panel */}
-            {(Object.keys(agents).length > 0 || isRunning) && (
+            {phase !== "idle" && (
               <div className="border-b border-border bg-card">
-                <AgentPanel agents={agents} isRunning={isRunning} />
+                <AgentPanel 
+                  agents={agents} 
+                  phase={phase} 
+                  plan={plan}
+                  onApprove={handleApprove}
+                />
               </div>
             )}
             {/* Preview Panel */}
             <div className="flex-1">
-              <PreviewPanel status={isRunning ? { status: 'working' } : projectStatus} />
+              <PreviewPanel status={isActive ? { status: 'working' } : projectStatus} />
             </div>
           </div>
         </ResizablePanel>

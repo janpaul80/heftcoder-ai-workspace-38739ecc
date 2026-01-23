@@ -1,15 +1,43 @@
+export type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
+
 export interface AgentInfo {
   agentId: string;
   agentName: string;
   role: string;
-  status: "pending" | "working" | "complete" | "error";
+  status: AgentStatus;
   output?: string;
+  statusLabel?: string;
+}
+
+export interface PlanStep {
+  id: string;
+  agent: string;
+  task: string;
+  dependencies: string[];
+}
+
+export interface ProjectPlan {
+  projectName: string;
+  description: string;
+  techStack: {
+    frontend: string[];
+    backend: string[];
+    database: string;
+  };
+  steps: PlanStep[];
+  estimatedTime: string;
+}
+
+export interface PlanReadyEvent {
+  type: "plan_ready";
+  plan: ProjectPlan;
 }
 
 export interface AgentStatusEvent {
   type: "agent_status";
   agent: string;
-  status: AgentInfo["status"];
+  status: AgentStatus;
+  statusLabel?: string;
   output?: string;
   error?: string;
 }
@@ -22,6 +50,20 @@ export interface AgentsInitEvent {
 export interface CompleteEvent {
   type: "complete";
   agents: Record<string, AgentInfo>;
+  summary?: string;
 }
 
-export type OrchestratorEvent = AgentStatusEvent | AgentsInitEvent | CompleteEvent | { type: "[DONE]" };
+export interface ErrorEvent {
+  type: "error";
+  message: string;
+}
+
+export type OrchestratorEvent = 
+  | PlanReadyEvent 
+  | AgentStatusEvent 
+  | AgentsInitEvent 
+  | CompleteEvent 
+  | ErrorEvent
+  | { type: "[DONE]" };
+
+export type OrchestratorPhase = "idle" | "planning" | "awaiting_approval" | "building" | "complete" | "error";
