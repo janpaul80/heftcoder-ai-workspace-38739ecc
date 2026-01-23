@@ -42,6 +42,13 @@ export interface AgentStatusEvent {
   error?: string;
 }
 
+export interface AgentStreamEvent {
+  type: "agent_stream";
+  agent: string;
+  chunk: string;
+  output: string;
+}
+
 export interface AgentsInitEvent {
   type: "agents_init";
   agents: Record<string, AgentInfo>;
@@ -61,6 +68,7 @@ export interface ErrorEvent {
 export type OrchestratorEvent = 
   | PlanReadyEvent 
   | AgentStatusEvent 
+  | AgentStreamEvent
   | AgentsInitEvent 
   | CompleteEvent 
   | ErrorEvent
