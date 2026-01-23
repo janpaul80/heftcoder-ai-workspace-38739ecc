@@ -22,10 +22,18 @@ export function WorkspaceEditor() {
     error, 
     summary,
     streamingOutput,
+    generatedProject,
     requestPlan, 
     approvePlan, 
     reset 
   } = useOrchestrator();
+
+  // Update status when project is generated
+  useEffect(() => {
+    if (generatedProject && generatedProject.files.length > 0) {
+      setProjectStatus({ status: 'complete' });
+    }
+  }, [generatedProject]);
 
   // Update messages when build completes
   useEffect(() => {
@@ -33,11 +41,10 @@ export function WorkspaceEditor() {
       const summaryMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `## ✅ Build Complete!\n\n${summary}`,
+        content: summary,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, summaryMessage]);
-      setProjectStatus({ status: 'complete' });
     }
   }, [phase, summary]);
 
@@ -79,7 +86,7 @@ export function WorkspaceEditor() {
       const planningMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `🤔 Analyzing your request...\n\nI'm designing the architecture and creating a build plan for your project. This will just take a moment.`,
+        content: `🤔 **Analyzing your request...**\n\nI'm designing the architecture and creating a build plan. This will just take a moment.`,
         timestamp: new Date(),
       };
 
@@ -94,7 +101,7 @@ export function WorkspaceEditor() {
     const approvalMessage: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `🚀 **Starting build process...**\n\nThe agent orchestra is now working on your project. Watch the progress panel to see each agent's status.`,
+      content: `🚀 **Building your project...**\n\nThe agent orchestra is generating code. Watch the preview panel to see your project come to life!`,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, approvalMessage]);
@@ -113,7 +120,7 @@ export function WorkspaceEditor() {
       />
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        <ResizablePanel defaultSize={45} minSize={30} maxSize={60}>
+        <ResizablePanel defaultSize={40} minSize={25} maxSize={55}>
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
@@ -123,11 +130,11 @@ export function WorkspaceEditor() {
 
         <ResizableHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors data-[resize-handle-active]:bg-primary" />
 
-        <ResizablePanel defaultSize={55} minSize={40} maxSize={70}>
+        <ResizablePanel defaultSize={60} minSize={45} maxSize={75}>
           <div className="h-full flex flex-col overflow-hidden">
             {/* Agent Orchestra Panel */}
             {phase !== "idle" && (
-              <div className="border-b border-border bg-card/50 backdrop-blur-sm max-h-[50%] overflow-y-auto scrollbar-thin">
+              <div className="border-b border-border bg-card/50 backdrop-blur-sm max-h-[40%] overflow-y-auto scrollbar-thin">
                 <AgentPanel 
                   agents={agents} 
                   phase={phase} 
@@ -139,7 +146,10 @@ export function WorkspaceEditor() {
             )}
             {/* Preview Panel */}
             <div className="flex-1 min-h-0">
-              <PreviewPanel status={isActive ? { status: 'working' } : projectStatus} />
+              <PreviewPanel 
+                status={isActive ? { status: 'working' } : projectStatus}
+                project={generatedProject}
+              />
             </div>
           </div>
         </ResizablePanel>

@@ -1,3 +1,5 @@
+import type { GeneratedProject, ProjectType } from './workspace';
+
 export type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
 
 export interface AgentInfo {
@@ -7,6 +9,7 @@ export interface AgentInfo {
   status: AgentStatus;
   output?: string;
   statusLabel?: string;
+  code?: string;
 }
 
 export interface PlanStep {
@@ -18,6 +21,7 @@ export interface PlanStep {
 
 export interface ProjectPlan {
   projectName: string;
+  projectType: ProjectType;
   description: string;
   techStack: {
     frontend: string[];
@@ -39,6 +43,7 @@ export interface AgentStatusEvent {
   status: AgentStatus;
   statusLabel?: string;
   output?: string;
+  code?: string;
   error?: string;
 }
 
@@ -54,10 +59,16 @@ export interface AgentsInitEvent {
   agents: Record<string, AgentInfo>;
 }
 
+export interface CodeGeneratedEvent {
+  type: "code_generated";
+  project: GeneratedProject;
+}
+
 export interface CompleteEvent {
   type: "complete";
   agents: Record<string, AgentInfo>;
   summary?: string;
+  project?: GeneratedProject;
 }
 
 export interface ErrorEvent {
@@ -70,6 +81,7 @@ export type OrchestratorEvent =
   | AgentStatusEvent 
   | AgentStreamEvent
   | AgentsInitEvent 
+  | CodeGeneratedEvent
   | CompleteEvent 
   | ErrorEvent
   | { type: "[DONE]" };

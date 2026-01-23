@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { AgentInfo, OrchestratorEvent, ProjectPlan, OrchestratorPhase } from '@/types/orchestrator';
+import type { GeneratedProject } from '@/types/workspace';
 
 const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orchestrator`;
 
@@ -10,6 +11,7 @@ export interface OrchestratorState {
   error: string | null;
   summary: string | null;
   streamingOutput: Record<string, string>;
+  generatedProject: GeneratedProject | null;
 }
 
 export function useOrchestrator() {
@@ -20,6 +22,7 @@ export function useOrchestrator() {
   const [summary, setSummary] = useState<string | null>(null);
   const [originalMessage, setOriginalMessage] = useState<string>("");
   const [streamingOutput, setStreamingOutput] = useState<Record<string, string>>({});
+  const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
 
   const streamEvents = useCallback(async (url: string, body: object) => {
     const response = await fetch(url, {
@@ -72,6 +75,7 @@ export function useOrchestrator() {
                 status: event.status,
                 statusLabel: event.statusLabel,
                 output: event.output || prev[event.agent]?.output,
+                code: event.code || prev[event.agent]?.code,
               },
             }));
           } else if (event.type === "agent_stream") {
@@ -79,12 +83,17 @@ export function useOrchestrator() {
               ...prev,
               [event.agent]: event.output,
             }));
+          } else if (event.type === "code_generated") {
+            setGeneratedProject(event.project);
           } else if (event.type === "plan_ready") {
             setPlan(event.plan);
             setPhase("awaiting_approval");
           } else if (event.type === "complete") {
             setAgents(event.agents);
             setSummary(event.summary || null);
+            if (event.project) {
+              setGeneratedProject(event.project);
+            }
             setPhase("complete");
           } else if (event.type === "error") {
             setError(event.message);
@@ -105,6 +114,7 @@ export function useOrchestrator() {
     setSummary(null);
     setOriginalMessage(message);
     setStreamingOutput({});
+    setGeneratedProject(null);
     
     // Initialize architect as thinking
     setAgents({
@@ -156,6 +166,7 @@ export function useOrchestrator() {
     setSummary(null);
     setOriginalMessage("");
     setStreamingOutput({});
+    setGeneratedProject(null);
   }, []);
 
   return {
@@ -165,6 +176,7 @@ export function useOrchestrator() {
     error,
     summary,
     streamingOutput,
+    generatedProject,
     requestPlan,
     approvePlan,
     reset,
