@@ -153,12 +153,15 @@ Format your response as code blocks with language tags:
 async function callLangdockAgent(agentId: string, message: string, systemPrompt?: string): Promise<string> {
   const apiKey = Deno.env.get("LANGDOCK_API_KEY");
   
-  if (!apiKey) {
-    throw new Error("LANGDOCK_API_KEY is not configured");
+  console.log("Checking LANGDOCK_API_KEY:", apiKey ? "Found (length: " + apiKey.length + ")" : "NOT FOUND");
+  console.log("Agent ID:", agentId || "NOT CONFIGURED");
+  
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error("LANGDOCK_API_KEY is not configured. Please add it to your project secrets.");
   }
 
-  if (!agentId) {
-    throw new Error("Agent ID is not configured");
+  if (!agentId || agentId.trim() === "") {
+    throw new Error("Agent ID is not configured. Please add agent IDs to your project secrets.");
   }
 
   const messages = systemPrompt 
