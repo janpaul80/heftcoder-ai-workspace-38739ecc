@@ -5,7 +5,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ============= TYPES =============
+
 type ProjectType = "landing" | "webapp" | "native";
+type AgentPhase = "idle" | "planning" | "awaiting_approval" | "building_backend" | "building_frontend" | "integrating" | "qa_testing" | "deploying" | "complete" | "error";
+type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
 
 interface PlanStep {
   id: string;
@@ -40,8 +44,6 @@ interface GeneratedProject {
   previewHtml?: string;
 }
 
-type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
-
 interface AgentTask {
   agentId: string;
   agentName: string;
@@ -52,116 +54,250 @@ interface AgentTask {
   code?: string;
 }
 
-// Agent configuration with Langdock IDs
+interface ToolCall {
+  name: string;
+  parameters: Record<string, unknown>;
+}
+
+interface OrchestrationState {
+  phase: AgentPhase;
+  currentAgent: string | null;
+  plan: ProjectPlan | null;
+  files: GeneratedFile[];
+  executionLog: Array<{
+    timestamp: Date;
+    agent: string;
+    phase: AgentPhase;
+    message: string;
+  }>;
+}
+
+// ============= TOOL DEFINITIONS (Functions Agents Can Call) =============
+
+const HANDOFF_TOOLS = {
+  handoff_to_backend: {
+    name: "handoff_to_backend",
+    description: "Call this when plan is approved to delegate backend work to Agent 2",
+    parameters: {
+      type: "object",
+      properties: {
+        plan_json: { type: "object", description: "The structured plan" }
+      },
+      required: ["plan_json"]
+    }
+  },
+  handoff_to_frontend: {
+    name: "handoff_to_frontend",
+    description: "Call this when backend is ready to delegate UI work to Agent 3",
+    parameters: {
+      type: "object",
+      properties: {
+        backend_artifacts: { type: "object", description: "Backend code and schema" }
+      },
+      required: ["backend_artifacts"]
+    }
+  },
+  handoff_to_integrator: {
+    name: "handoff_to_integrator",
+    description: "Call this when frontend is ready to connect frontend to backend",
+    parameters: {
+      type: "object",
+      properties: {
+        frontend_artifacts: { type: "object", description: "Frontend components" },
+        backend_artifacts: { type: "object", description: "Backend API" }
+      },
+      required: ["frontend_artifacts"]
+    }
+  },
+  handoff_to_qa: {
+    name: "handoff_to_qa",
+    description: "Call this when integration is complete to run tests",
+    parameters: {
+      type: "object",
+      properties: {
+        project_artifacts: { type: "object", description: "Complete project" }
+      },
+      required: ["project_artifacts"]
+    }
+  },
+  handoff_to_devops: {
+    name: "handoff_to_devops",
+    description: "Call this when QA passes to deploy the project",
+    parameters: {
+      type: "object",
+      properties: {
+        project_artifacts: { type: "object", description: "Tested project" }
+      },
+      required: ["project_artifacts"]
+    }
+  },
+  complete_project: {
+    name: "complete_project",
+    description: "Call this when the project is fully deployed and ready",
+    parameters: {
+      type: "object",
+      properties: {
+        final_output: { type: "object", description: "Final project summary" }
+      },
+      required: ["final_output"]
+    }
+  }
+};
+
+// ============= AGENT CONFIGURATION =============
+
 const AGENTS = {
   architect: {
-    id: Deno.env.get("AGENT_ARCHITECT_ID"),
+    id: () => Deno.env.get("AGENT_ARCHITECT_ID"),
     name: "Planner",
     role: "System design and project structure",
+    nextHandoff: "handoff_to_frontend", // For landing pages, skip backend
   },
   backend: {
-    id: Deno.env.get("AGENT_BACKEND_ID"),
+    id: () => Deno.env.get("AGENT_BACKEND_ID"),
     name: "Backend",
     role: "API and database implementation",
+    nextHandoff: "handoff_to_frontend",
   },
   frontend: {
-    id: Deno.env.get("AGENT_FRONTEND_ID"),
+    id: () => Deno.env.get("AGENT_FRONTEND_ID"),
     name: "Frontend",
     role: "UI components and styling",
+    nextHandoff: "handoff_to_integrator",
   },
   integrator: {
-    id: Deno.env.get("AGENT_INTEGRATOR_ID"),
+    id: () => Deno.env.get("AGENT_INTEGRATOR_ID"),
     name: "Integrator",
     role: "Connect frontend to backend",
+    nextHandoff: "handoff_to_qa",
   },
   qa: {
-    id: Deno.env.get("AGENT_QA_ID"),
+    id: () => Deno.env.get("AGENT_QA_ID"),
     name: "QA",
     role: "Testing and quality assurance",
+    nextHandoff: "handoff_to_devops",
   },
   devops: {
-    id: Deno.env.get("AGENT_DEVOPS_ID"),
+    id: () => Deno.env.get("AGENT_DEVOPS_ID"),
     name: "DevOps",
     role: "Deployment and infrastructure",
+    nextHandoff: "complete_project",
   },
 };
 
-const PLANNER_SYSTEM_PROMPT = `You are a project planner for a code generation system. Analyze the user's request and determine:
-1. What type of project this is (landing = static landing page, webapp = interactive web application, native = mobile app)
-2. What needs to be built
+// ============= PROMPTS =============
 
-Output ONLY a valid JSON object with this exact structure (no markdown, no explanation):
+const PLANNER_SYSTEM_PROMPT = `You are a project planner for a code generation system. Analyze the user's request and create a project plan.
 
+IMPORTANT: You have access to tools for delegating work. After creating the plan, you MUST call the appropriate handoff tool.
+
+For landing pages: Call handoff_to_frontend() with the plan
+For web apps: Call handoff_to_backend() with the plan (if backend needed) or handoff_to_frontend() if frontend-only
+
+Output a JSON plan first, then call the handoff tool.
+
+Plan format:
 {
   "projectName": "string",
   "projectType": "landing" | "webapp" | "native",
-  "description": "Brief 1-sentence description",
+  "description": "Brief description",
   "techStack": {
     "frontend": ["HTML", "CSS", "JavaScript"] or ["React", "TypeScript", "Tailwind"],
-    "backend": ["None"] or ["Supabase", "Edge Functions"],
+    "backend": ["None"] or ["Supabase"],
     "database": "None" or "PostgreSQL"
   },
   "steps": [
-    {"id": "1", "agent": "frontend", "task": "Create HTML structure and styling", "dependencies": []},
-    {"id": "2", "agent": "frontend", "task": "Add interactivity", "dependencies": ["1"]},
-    {"id": "3", "agent": "qa", "task": "Test responsiveness", "dependencies": ["2"]}
+    {"id": "1", "agent": "frontend", "task": "Create structure", "dependencies": []}
   ],
   "estimatedTime": "X minutes"
 }
 
-For landing pages, focus on frontend steps only.
-For web apps, include backend if needed.
-For native apps, include Capacitor setup steps.
+After outputting the plan, ALWAYS end with:
+TOOL_CALL: handoff_to_frontend({"plan_json": <the plan object>})`;
 
-Output ONLY the JSON. No other text.`;
+const CODE_GENERATION_PROMPT = `You are a code generator. Generate complete, working code.
 
-const CODE_GENERATION_PROMPT = `You are a code generator. Generate complete, working code based on the requirements.
+RULES:
+1. Generate complete, runnable code - no placeholders
+2. Use modern best practices and Tailwind CSS
+3. Make it visually stunning and responsive
+4. Output code blocks with language tags
 
-IMPORTANT RULES:
-1. Generate complete, runnable code - no placeholders or "// TODO" comments
-2. Use modern best practices
-3. Make it visually appealing with proper styling
-4. Include responsive design
-5. Output ONLY code blocks, no explanations
-
-For landing pages, generate:
-- Complete HTML with inline Tailwind CSS (use CDN)
+For landing pages:
+- Complete HTML with Tailwind CDN
 - Modern, professional design
 - Mobile-responsive layout
-- Call-to-action sections
 
-For web apps, generate:
-- React components with TypeScript
-- Tailwind CSS styling
-- Proper state management
-- Error handling
-
-Format your response as code blocks with language tags:
+Format:
 \`\`\`html
 <!-- your HTML code -->
 \`\`\`
 
-\`\`\`css
-/* your CSS code */
-\`\`\`
+After generating code, call:
+TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`;
 
-\`\`\`javascript
-// your JavaScript code
-\`\`\``;
+// ============= TOOL CALL DETECTION =============
 
-// Non-streaming for planning (needs full JSON)
-async function callLangdockAgent(agentId: string, message: string, systemPrompt?: string): Promise<string> {
+function detectToolCalls(content: string): ToolCall[] {
+  const detectedCalls: ToolCall[] = [];
+
+  // Strategy 1: Explicit syntax - TOOL_CALL: function_name({...})
+  const explicitPattern = /TOOL_CALL:\s*(\w+)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
+  let match;
+  
+  while ((match = explicitPattern.exec(content)) !== null) {
+    const [, functionName, paramsJson] = match;
+    try {
+      const parameters = JSON.parse(paramsJson);
+      detectedCalls.push({ name: functionName, parameters });
+      console.log(`[Tool Detection] Found explicit call: ${functionName}`);
+    } catch (e) {
+      console.log(`[Tool Detection] Failed to parse params for ${functionName}:`, e);
+    }
+  }
+
+  // Strategy 2: Keyword fallback - natural language handoffs
+  if (detectedCalls.length === 0) {
+    const handoffPatterns = [
+      { pattern: /\b(handoff|delegate|pass)\s+to\s+backend\b/i, tool: "handoff_to_backend" },
+      { pattern: /\b(handoff|delegate|pass)\s+to\s+frontend\b/i, tool: "handoff_to_frontend" },
+      { pattern: /\b(handoff|delegate|pass)\s+to\s+integrator\b/i, tool: "handoff_to_integrator" },
+      { pattern: /\b(handoff|delegate|pass)\s+to\s+qa\b/i, tool: "handoff_to_qa" },
+      { pattern: /\b(handoff|delegate|pass)\s+to\s+devops\b/i, tool: "handoff_to_devops" },
+      { pattern: /\b(project\s+)?complete[d]?\b/i, tool: "complete_project" },
+    ];
+
+    for (const { pattern, tool } of handoffPatterns) {
+      if (pattern.test(content)) {
+        detectedCalls.push({ name: tool, parameters: {} });
+        console.log(`[Tool Detection] Found keyword match: ${tool}`);
+        break;
+      }
+    }
+  }
+
+  return detectedCalls;
+}
+
+// ============= LANGDOCK API CALL =============
+
+async function callLangdockAgent(
+  agentId: string, 
+  message: string, 
+  systemPrompt?: string,
+  tools?: object[]
+): Promise<{ content: string; toolCalls: ToolCall[] }> {
   const apiKey = Deno.env.get("LANGDOCK_API_KEY");
   
-  console.log("Checking LANGDOCK_API_KEY:", apiKey ? "Found (length: " + apiKey.length + ")" : "NOT FOUND");
-  console.log("Agent ID:", agentId || "NOT CONFIGURED");
+  console.log("[Langdock] API Key:", apiKey ? `Found (${apiKey.length} chars)` : "NOT FOUND");
+  console.log("[Langdock] Agent ID:", agentId || "NOT CONFIGURED");
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("LANGDOCK_API_KEY is not configured. Please add it to your project secrets.");
+    throw new Error("LANGDOCK_API_KEY not configured");
   }
 
   if (!agentId || agentId.trim() === "") {
-    throw new Error("Agent ID is not configured. Please add agent IDs to your project secrets.");
+    throw new Error("Agent ID not configured");
   }
 
   const messages = systemPrompt 
@@ -171,45 +307,45 @@ async function callLangdockAgent(agentId: string, message: string, systemPrompt?
       ]
     : [{ role: "user", content: message }];
 
+  const requestBody: Record<string, unknown> = {
+    messages,
+    stream: false,
+  };
+
+  // Add tools if provided
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools;
+    console.log("[Langdock] Passing tools:", tools.map((t: any) => t.name));
+  }
+
   const response = await fetch(`https://api.langdock.com/assistant/v1/chat/${agentId}`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      messages,
-      stream: false,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error(`Agent ${agentId} error:`, response.status, errorText);
+    console.error(`[Langdock] Error ${response.status}:`, errorText);
     throw new Error(`Agent call failed: ${response.status}`);
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || "No response";
+  const content = data.choices?.[0]?.message?.content || "";
+  
+  // Detect tool calls in the response
+  const toolCalls = detectToolCalls(content);
+  
+  console.log("[Langdock] Response length:", content.length);
+  console.log("[Langdock] Tool calls detected:", toolCalls.length);
+
+  return { content, toolCalls };
 }
 
-function parsePlanFromResponse(response: string): ProjectPlan | null {
-  try {
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const plan = JSON.parse(jsonMatch[0]) as ProjectPlan;
-      // Ensure projectType is valid
-      if (!["landing", "webapp", "native"].includes(plan.projectType)) {
-        plan.projectType = "webapp";
-      }
-      return plan;
-    }
-    return JSON.parse(response) as ProjectPlan;
-  } catch {
-    console.error("Failed to parse plan:", response);
-    return null;
-  }
-}
+// ============= CODE EXTRACTION =============
 
 function extractCodeBlocks(content: string): GeneratedFile[] {
   const files: GeneratedFile[] = [];
@@ -217,16 +353,16 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
   let match;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
-    const language = match[1] || 'text';
+    const language = match[1] || "text";
     const code = match[2].trim();
     
-    let path = 'code';
-    if (language === 'html') path = 'index.html';
-    else if (language === 'css') path = 'styles.css';
-    else if (language === 'javascript' || language === 'js') path = 'script.js';
-    else if (language === 'typescript' || language === 'ts') path = 'app.ts';
-    else if (language === 'tsx') path = 'App.tsx';
-    else if (language === 'jsx') path = 'App.jsx';
+    let path = "code";
+    if (language === "html") path = "index.html";
+    else if (language === "css") path = "styles.css";
+    else if (language === "javascript" || language === "js") path = "script.js";
+    else if (language === "typescript" || language === "ts") path = "app.ts";
+    else if (language === "tsx") path = "App.tsx";
+    else if (language === "jsx") path = "App.jsx";
     
     files.push({ path, content: code, language });
   }
@@ -235,27 +371,24 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
 }
 
 function buildPreviewHtml(files: GeneratedFile[], projectName: string): string {
-  const htmlFile = files.find(f => f.path.endsWith('.html'));
-  const cssFile = files.find(f => f.path.endsWith('.css'));
-  const jsFile = files.find(f => f.language === 'javascript' || f.language === 'js');
+  const htmlFile = files.find(f => f.path.endsWith(".html"));
+  const cssFile = files.find(f => f.path.endsWith(".css"));
+  const jsFile = files.find(f => f.language === "javascript" || f.language === "js");
 
   if (htmlFile) {
     let html = htmlFile.content;
     
-    // Inject CSS if not already included
-    if (cssFile && !html.includes('<style>')) {
-      html = html.replace('</head>', `<style>\n${cssFile.content}\n</style>\n</head>`);
+    if (cssFile && !html.includes("<style>")) {
+      html = html.replace("</head>", `<style>\n${cssFile.content}\n</style>\n</head>`);
     }
     
-    // Inject JS if not already included  
-    if (jsFile && !html.includes('<script>')) {
-      html = html.replace('</body>', `<script>\n${jsFile.content}\n</script>\n</body>`);
+    if (jsFile && !html.includes("<script>")) {
+      html = html.replace("</body>", `<script>\n${jsFile.content}\n</script>\n</body>`);
     }
     
     return html;
   }
 
-  // Build from scratch if no HTML file
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -263,14 +396,453 @@ function buildPreviewHtml(files: GeneratedFile[], projectName: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${projectName}</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  ${cssFile ? `<style>\n${cssFile.content}\n</style>` : ''}
+  ${cssFile ? `<style>\n${cssFile.content}\n</style>` : ""}
 </head>
 <body class="min-h-screen bg-gray-50">
   <div id="root"></div>
-  ${jsFile ? `<script>\n${jsFile.content}\n</script>` : ''}
+  ${jsFile ? `<script>\n${jsFile.content}\n</script>` : ""}
 </body>
 </html>`;
 }
+
+function parsePlanFromResponse(response: string): ProjectPlan | null {
+  try {
+    const jsonMatch = response.match(/\{[\s\S]*?"projectName"[\s\S]*?\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as ProjectPlan;
+    }
+    return null;
+  } catch {
+    console.error("[Parse] Failed to parse plan");
+    return null;
+  }
+}
+
+// ============= ORCHESTRATION ENGINE =============
+
+class OrchestrationEngine {
+  private state: OrchestrationState;
+  private send: (data: object) => void;
+  private agentTasks: Record<string, AgentTask> = {};
+
+  constructor(send: (data: object) => void) {
+    this.send = send;
+    this.state = {
+      phase: "idle",
+      currentAgent: null,
+      plan: null,
+      files: [],
+      executionLog: [],
+    };
+  }
+
+  private log(agent: string, message: string) {
+    this.state.executionLog.push({
+      timestamp: new Date(),
+      agent,
+      phase: this.state.phase,
+      message,
+    });
+    console.log(`[Orchestration] ${agent}: ${message}`);
+  }
+
+  private getProgress(): number {
+    const progressMap: Record<AgentPhase, number> = {
+      idle: 0,
+      planning: 10,
+      awaiting_approval: 15,
+      building_backend: 30,
+      building_frontend: 50,
+      integrating: 70,
+      qa_testing: 85,
+      deploying: 95,
+      complete: 100,
+      error: 0,
+    };
+    return progressMap[this.state.phase] || 0;
+  }
+
+  async handleToolCall(toolName: string, parameters: Record<string, unknown>): Promise<void> {
+    console.log(`[Orchestration] Handling tool call: ${toolName}`);
+
+    switch (toolName) {
+      case "handoff_to_backend":
+        await this.transitionTo("building_backend", "backend", parameters);
+        break;
+      case "handoff_to_frontend":
+        await this.transitionTo("building_frontend", "frontend", parameters);
+        break;
+      case "handoff_to_integrator":
+        await this.transitionTo("integrating", "integrator", parameters);
+        break;
+      case "handoff_to_qa":
+        await this.transitionTo("qa_testing", "qa", parameters);
+        break;
+      case "handoff_to_devops":
+        await this.transitionTo("deploying", "devops", parameters);
+        break;
+      case "complete_project":
+        await this.completeProject(parameters);
+        break;
+    }
+  }
+
+  private async transitionTo(phase: AgentPhase, agentKey: string, context: Record<string, unknown>) {
+    this.state.phase = phase;
+    this.state.currentAgent = agentKey;
+    this.log(agentKey, `Starting ${phase}...`);
+
+    // Update agent status
+    if (this.agentTasks[agentKey]) {
+      this.agentTasks[agentKey].status = "thinking";
+      this.agentTasks[agentKey].statusLabel = "Working...";
+    }
+
+    this.send({
+      type: "agent_status",
+      agent: agentKey,
+      status: "thinking",
+      statusLabel: `${AGENTS[agentKey as keyof typeof AGENTS]?.name || agentKey} working...`,
+      progress: this.getProgress(),
+    });
+
+    // Execute the agent
+    await this.executeAgent(agentKey, context);
+  }
+
+  private async executeAgent(agentKey: string, context: Record<string, unknown>) {
+    const agent = AGENTS[agentKey as keyof typeof AGENTS];
+    if (!agent) {
+      console.error(`[Orchestration] Unknown agent: ${agentKey}`);
+      return;
+    }
+
+    const agentId = agent.id();
+    if (!agentId) {
+      console.error(`[Orchestration] No ID for agent: ${agentKey}`);
+      // Auto-complete if agent not configured
+      await this.autoHandoff(agentKey, context);
+      return;
+    }
+
+    // Build agent-specific prompt
+    const prompt = this.getAgentPrompt(agentKey, context);
+    const tools = this.getToolsForAgent(agentKey);
+
+    try {
+      this.send({
+        type: "agent_status",
+        agent: agentKey,
+        status: "creating",
+        statusLabel: "Generating...",
+      });
+
+      const result = await callLangdockAgent(agentId, prompt, undefined, tools);
+
+      // Extract any code from the response
+      const files = extractCodeBlocks(result.content);
+      if (files.length > 0) {
+        this.state.files.push(...files);
+        
+        // Build preview
+        const previewHtml = buildPreviewHtml(this.state.files, this.state.plan?.projectName || "Project");
+        const project: GeneratedProject = {
+          type: this.state.plan?.projectType || "webapp",
+          name: this.state.plan?.projectName || "Project",
+          files: this.state.files,
+          previewHtml,
+        };
+
+        this.send({ type: "code_generated", project });
+      }
+
+      // Update agent status
+      this.send({
+        type: "agent_status",
+        agent: agentKey,
+        status: "complete",
+        statusLabel: "Done",
+        output: result.content,
+        code: files.map(f => f.content).join("\n\n"),
+      });
+
+      // Handle tool calls from the response
+      if (result.toolCalls.length > 0) {
+        for (const toolCall of result.toolCalls) {
+          await this.handleToolCall(toolCall.name, toolCall.parameters);
+        }
+      } else {
+        // No tool call detected - auto-handoff to next agent
+        await this.autoHandoff(agentKey, { ...context, output: result.content, files });
+      }
+    } catch (err) {
+      console.error(`[Orchestration] Agent ${agentKey} error:`, err);
+      this.send({
+        type: "agent_status",
+        agent: agentKey,
+        status: "error",
+        statusLabel: err instanceof Error ? err.message : "Failed",
+      });
+      // Continue to next agent anyway
+      await this.autoHandoff(agentKey, context);
+    }
+  }
+
+  private async autoHandoff(currentAgent: string, context: Record<string, unknown>) {
+    const agent = AGENTS[currentAgent as keyof typeof AGENTS];
+    if (agent?.nextHandoff) {
+      console.log(`[Orchestration] Auto-handoff from ${currentAgent} via ${agent.nextHandoff}`);
+      await this.handleToolCall(agent.nextHandoff, context);
+    }
+  }
+
+  private getAgentPrompt(agentKey: string, context: Record<string, unknown>): string {
+    const plan = this.state.plan;
+    const planJson = JSON.stringify(plan, null, 2);
+
+    const prompts: Record<string, string> = {
+      backend: `You are a Backend Engineer. Build the backend based on this plan:
+${planJson}
+
+Create database schemas and API endpoints as needed.
+When complete, call: TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`,
+
+      frontend: `You are a Frontend Engineer. Build a stunning UI based on this plan:
+${planJson}
+
+Project Description: ${plan?.description || context.message}
+
+IMPORTANT:
+1. Generate COMPLETE, working HTML with Tailwind CSS (use CDN)
+2. Make it visually stunning - modern gradients, shadows, animations
+3. Mobile-responsive design
+4. No placeholders - real content
+
+Output your code in a code block:
+\`\`\`html
+<!DOCTYPE html>
+...complete code...
+\`\`\`
+
+When complete, call: TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`,
+
+      integrator: `You are an Integration Engineer. Connect the frontend to the backend.
+Plan: ${planJson}
+
+When complete, call: TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`,
+
+      qa: `You are a QA Engineer. Test the project for:
+- Responsive design
+- Accessibility
+- Performance
+
+Plan: ${planJson}
+
+When tests pass, call: TOOL_CALL: handoff_to_devops({"project_artifacts": {...}})`,
+
+      devops: `You are a DevOps Engineer. The project is ready for deployment.
+Plan: ${planJson}
+
+When deployed, call: TOOL_CALL: complete_project({"final_output": {...}})`,
+    };
+
+    return prompts[agentKey] || `Execute task for: ${planJson}`;
+  }
+
+  private getToolsForAgent(agentKey: string): object[] {
+    const toolMap: Record<string, string[]> = {
+      architect: ["handoff_to_backend", "handoff_to_frontend"],
+      backend: ["handoff_to_frontend"],
+      frontend: ["handoff_to_integrator", "handoff_to_qa"],
+      integrator: ["handoff_to_qa"],
+      qa: ["handoff_to_devops"],
+      devops: ["complete_project"],
+    };
+
+    const toolNames = toolMap[agentKey] || [];
+    return toolNames.map(name => HANDOFF_TOOLS[name as keyof typeof HANDOFF_TOOLS]).filter(Boolean);
+  }
+
+  private async completeProject(context: Record<string, unknown>) {
+    this.state.phase = "complete";
+    this.log("orchestrator", "Project complete!");
+
+    const finalProject: GeneratedProject = {
+      type: this.state.plan?.projectType || "webapp",
+      name: this.state.plan?.projectName || "Project",
+      files: this.state.files,
+      previewHtml: buildPreviewHtml(this.state.files, this.state.plan?.projectName || "Project"),
+    };
+
+    this.send({
+      type: "complete",
+      agents: this.agentTasks,
+      summary: `## ${finalProject.name}\n\nYour ${finalProject.type} has been generated!\n\n**Files created:**\n${finalProject.files.map(f => `- ${f.path}`).join("\n")}\n\nView the preview on the right.`,
+      project: finalProject,
+    });
+  }
+
+  async startPlanning(message: string) {
+    this.state.phase = "planning";
+    this.log("architect", "Starting planning...");
+
+    // Initialize architect
+    this.agentTasks = {
+      architect: {
+        agentId: AGENTS.architect.id() || "",
+        agentName: AGENTS.architect.name,
+        role: AGENTS.architect.role,
+        status: "thinking",
+        statusLabel: "Analyzing requirements...",
+      },
+    };
+
+    this.send({ type: "agents_init", agents: this.agentTasks });
+    this.send({
+      type: "agent_status",
+      agent: "architect",
+      status: "thinking",
+      statusLabel: "Analyzing requirements...",
+    });
+
+    const architectId = AGENTS.architect.id();
+    
+    if (!architectId) {
+      // Fallback: create a basic plan without calling the API
+      console.log("[Orchestration] No architect ID, using fallback plan");
+      const lowerMsg = message.toLowerCase();
+      let projectType: ProjectType = "webapp";
+      if (lowerMsg.includes("landing") || lowerMsg.includes("page") || lowerMsg.includes("homepage")) {
+        projectType = "landing";
+      } else if (lowerMsg.includes("mobile") || lowerMsg.includes("native") || lowerMsg.includes("app")) {
+        projectType = "native";
+      }
+
+      const fallbackPlan: ProjectPlan = {
+        projectName: "Generated Project",
+        projectType,
+        description: message,
+        techStack: {
+          frontend: ["HTML", "Tailwind CSS", "JavaScript"],
+          backend: [],
+          database: "None",
+        },
+        steps: [
+          { id: "1", agent: "frontend", task: "Build UI", dependencies: [] },
+          { id: "2", agent: "qa", task: "Test", dependencies: ["1"] },
+        ],
+        estimatedTime: "2-3 minutes",
+      };
+
+      this.state.plan = fallbackPlan;
+      this.initAgentsFromPlan(fallbackPlan);
+
+      this.send({
+        type: "agent_status",
+        agent: "architect",
+        status: "complete",
+        statusLabel: "Plan ready",
+      });
+      this.send({ type: "plan_ready", plan: fallbackPlan });
+      return;
+    }
+
+    try {
+      const tools = [HANDOFF_TOOLS.handoff_to_backend, HANDOFF_TOOLS.handoff_to_frontend];
+      const result = await callLangdockAgent(
+        architectId,
+        `Create a project plan for: ${message}`,
+        PLANNER_SYSTEM_PROMPT,
+        tools
+      );
+
+      const plan = parsePlanFromResponse(result.content);
+      
+      if (plan) {
+        this.state.plan = plan;
+        this.initAgentsFromPlan(plan);
+      } else {
+        // Fallback plan
+        const lowerMsg = message.toLowerCase();
+        let projectType: ProjectType = "webapp";
+        if (lowerMsg.includes("landing") || lowerMsg.includes("page")) {
+          projectType = "landing";
+        }
+
+        this.state.plan = {
+          projectName: "Project",
+          projectType,
+          description: message,
+          techStack: {
+            frontend: ["HTML", "Tailwind CSS"],
+            backend: [],
+            database: "None",
+          },
+          steps: [{ id: "1", agent: "frontend", task: "Build", dependencies: [] }],
+          estimatedTime: "2 minutes",
+        };
+        this.initAgentsFromPlan(this.state.plan);
+      }
+
+      this.send({
+        type: "agent_status",
+        agent: "architect",
+        status: "complete",
+        statusLabel: "Plan ready",
+        output: result.content,
+      });
+      this.send({ type: "plan_ready", plan: this.state.plan });
+
+    } catch (err) {
+      console.error("[Orchestration] Planning error:", err);
+      this.send({
+        type: "agent_status",
+        agent: "architect",
+        status: "error",
+        statusLabel: err instanceof Error ? err.message : "Planning failed",
+      });
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : "Planning failed",
+      });
+    }
+  }
+
+  private initAgentsFromPlan(plan: ProjectPlan) {
+    const uniqueAgents = new Set(plan.steps.map(s => s.agent));
+    
+    for (const agentKey of uniqueAgents) {
+      const agent = AGENTS[agentKey as keyof typeof AGENTS];
+      if (agent) {
+        this.agentTasks[agentKey] = {
+          agentId: agent.id() || "",
+          agentName: agent.name,
+          role: agent.role,
+          status: "idle",
+        };
+      }
+    }
+  }
+
+  async startExecution(message: string, plan: ProjectPlan) {
+    this.state.plan = plan;
+    this.state.phase = "building_frontend";
+    this.initAgentsFromPlan(plan);
+
+    this.send({ type: "agents_init", agents: this.agentTasks });
+
+    // Determine starting point
+    const hasBackend = plan.steps.some(s => s.agent === "backend");
+    
+    if (hasBackend) {
+      await this.handleToolCall("handoff_to_backend", { plan_json: plan, message });
+    } else {
+      await this.handleToolCall("handoff_to_frontend", { plan_json: plan, message });
+    }
+  }
+}
+
+// ============= MAIN HANDLER =============
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -294,261 +866,16 @@ serve(async (req) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         };
 
-        // ========== PLAN ACTION ==========
+        const orchestrator = new OrchestrationEngine(send);
+
         if (action === "plan") {
-          send({ 
-            type: "agent_status", 
-            agent: "architect", 
-            status: "thinking",
-            statusLabel: "Analyzing your request..."
-          });
-
-          try {
-            const architectOutput = await callLangdockAgent(
-              AGENTS.architect.id!,
-              `Create a project plan for: ${message}`,
-              PLANNER_SYSTEM_PROMPT
-            );
-
-            let parsedPlan = parsePlanFromResponse(architectOutput);
-            
-            if (!parsedPlan) {
-              // Determine project type from message
-              const lowerMsg = message.toLowerCase();
-              let projectType: ProjectType = "webapp";
-              if (lowerMsg.includes("landing") || lowerMsg.includes("homepage") || lowerMsg.includes("one page")) {
-                projectType = "landing";
-              } else if (lowerMsg.includes("mobile") || lowerMsg.includes("native") || lowerMsg.includes("ios") || lowerMsg.includes("android")) {
-                projectType = "native";
-              }
-
-              parsedPlan = {
-                projectName: "Project",
-                projectType,
-                description: message,
-                techStack: {
-                  frontend: projectType === "landing" ? ["HTML", "Tailwind CSS", "JavaScript"] : ["React", "TypeScript", "Tailwind"],
-                  backend: projectType === "landing" ? [] : ["Supabase"],
-                  database: projectType === "landing" ? "None" : "PostgreSQL"
-                },
-                steps: projectType === "landing" ? [
-                  { id: "1", agent: "frontend", task: "Create landing page structure", dependencies: [] },
-                  { id: "2", agent: "frontend", task: "Add styling and animations", dependencies: ["1"] },
-                  { id: "3", agent: "qa", task: "Test responsiveness", dependencies: ["2"] },
-                ] : [
-                  { id: "1", agent: "backend", task: "Setup database schema", dependencies: [] },
-                  { id: "2", agent: "frontend", task: "Build UI components", dependencies: [] },
-                  { id: "3", agent: "integrator", task: "Connect frontend to backend", dependencies: ["1", "2"] },
-                  { id: "4", agent: "qa", task: "Test application", dependencies: ["3"] },
-                ],
-                estimatedTime: "3-5 minutes"
-              };
-            }
-
-            send({ 
-              type: "agent_status", 
-              agent: "architect", 
-              status: "complete",
-              statusLabel: "Plan ready",
-              output: architectOutput
-            });
-            send({ type: "plan_ready", plan: parsedPlan });
-
-          } catch (err) {
-            console.error("Planning error:", err);
-            send({ 
-              type: "agent_status", 
-              agent: "architect", 
-              status: "error",
-              statusLabel: err instanceof Error ? err.message : "Planning failed"
-            });
-            send({ 
-              type: "error", 
-              message: err instanceof Error ? err.message : "Planning failed" 
-            });
-          }
-
-          send({ type: "[DONE]" });
-          controller.close();
-          return;
+          await orchestrator.startPlanning(message);
+        } else if (action === "execute") {
+          await orchestrator.startExecution(message, plan as ProjectPlan);
+        } else {
+          send({ type: "error", message: "Unknown action" });
         }
 
-        // ========== EXECUTE ACTION ==========
-        if (action === "execute") {
-          const executionPlan = plan as ProjectPlan;
-          const projectFiles: GeneratedFile[] = [];
-          
-          // Initialize agents based on plan
-          const agentTasks: Record<string, AgentTask> = {};
-          const uniqueAgents = new Set(executionPlan.steps.map(s => s.agent));
-          
-          for (const agent of uniqueAgents) {
-            if (AGENTS[agent as keyof typeof AGENTS]) {
-              agentTasks[agent] = {
-                agentId: AGENTS[agent as keyof typeof AGENTS].id || "",
-                agentName: AGENTS[agent as keyof typeof AGENTS].name,
-                role: AGENTS[agent as keyof typeof AGENTS].role,
-                status: "idle",
-              };
-            }
-          }
-
-          send({ type: "agents_init", agents: agentTasks });
-
-          // Execute frontend agent to generate code
-          const frontendSteps = executionPlan.steps.filter(s => s.agent === "frontend");
-          
-          if (frontendSteps.length > 0) {
-            send({ 
-              type: "agent_status", 
-              agent: "frontend", 
-              status: "creating",
-              statusLabel: "Generating code..."
-            });
-
-            try {
-              const frontendPrompt = `
-Project: ${executionPlan.projectName}
-Type: ${executionPlan.projectType}
-Description: ${executionPlan.description}
-
-Tasks:
-${frontendSteps.map(s => `- ${s.task}`).join('\n')}
-
-Original request: ${message}
-
-Generate complete, production-ready code for this ${executionPlan.projectType === 'landing' ? 'landing page' : 'web application'}.
-Make it visually stunning with modern design patterns.
-Use Tailwind CSS for styling.
-Include proper responsive design for mobile, tablet, and desktop.`;
-
-              const frontendOutput = await callLangdockAgent(
-                AGENTS.frontend.id!,
-                frontendPrompt,
-                CODE_GENERATION_PROMPT
-              );
-
-              const generatedFiles = extractCodeBlocks(frontendOutput);
-              projectFiles.push(...generatedFiles);
-
-              agentTasks.frontend.status = "complete";
-              agentTasks.frontend.output = frontendOutput;
-              agentTasks.frontend.code = generatedFiles.map(f => f.content).join('\n\n');
-
-              send({ 
-                type: "agent_status", 
-                agent: "frontend", 
-                status: "complete",
-                statusLabel: "Code generated",
-                output: frontendOutput,
-                code: agentTasks.frontend.code
-              });
-
-              // Build preview
-              const previewHtml = buildPreviewHtml(projectFiles, executionPlan.projectName);
-              const project: GeneratedProject = {
-                type: executionPlan.projectType,
-                name: executionPlan.projectName,
-                files: projectFiles,
-                previewHtml,
-              };
-
-              send({ type: "code_generated", project });
-
-            } catch (err) {
-              console.error("Frontend error:", err);
-              send({ 
-                type: "agent_status", 
-                agent: "frontend", 
-                status: "error",
-                statusLabel: err instanceof Error ? err.message : "Generation failed"
-              });
-            }
-          }
-
-          // Execute backend agent if needed
-          const backendSteps = executionPlan.steps.filter(s => s.agent === "backend");
-          if (backendSteps.length > 0 && agentTasks.backend) {
-            send({ 
-              type: "agent_status", 
-              agent: "backend", 
-              status: "creating",
-              statusLabel: "Setting up backend..."
-            });
-
-            try {
-              const backendOutput = await callLangdockAgent(
-                AGENTS.backend.id!,
-                `Create backend for: ${executionPlan.description}\nTasks: ${backendSteps.map(s => s.task).join(', ')}`
-              );
-
-              agentTasks.backend.status = "complete";
-              agentTasks.backend.output = backendOutput;
-
-              send({ 
-                type: "agent_status", 
-                agent: "backend", 
-                status: "complete",
-                statusLabel: "Backend ready",
-                output: backendOutput
-              });
-            } catch (err) {
-              send({ 
-                type: "agent_status", 
-                agent: "backend", 
-                status: "error",
-                statusLabel: "Backend setup failed"
-              });
-            }
-          }
-
-          // QA testing
-          if (agentTasks.qa) {
-            send({ 
-              type: "agent_status", 
-              agent: "qa", 
-              status: "testing",
-              statusLabel: "Running tests..."
-            });
-
-            // Simulate testing delay
-            await new Promise(r => setTimeout(r, 1000));
-
-            agentTasks.qa.status = "complete";
-            agentTasks.qa.output = "✓ All tests passed\n✓ Responsive design verified\n✓ No accessibility issues";
-            
-            send({ 
-              type: "agent_status", 
-              agent: "qa", 
-              status: "complete",
-              statusLabel: "Tests passed",
-              output: agentTasks.qa.output
-            });
-          }
-
-          // Final project
-          const finalProject: GeneratedProject = {
-            type: executionPlan.projectType,
-            name: executionPlan.projectName,
-            files: projectFiles,
-            previewHtml: buildPreviewHtml(projectFiles, executionPlan.projectName),
-          };
-
-          // Complete
-          send({ 
-            type: "complete", 
-            agents: agentTasks,
-            summary: `## ${executionPlan.projectName}\n\nYour ${executionPlan.projectType} has been generated!\n\n**Files created:**\n${projectFiles.map(f => `- ${f.path}`).join('\n')}\n\nView the preview on the right to see your project in action.`,
-            project: finalProject
-          });
-          
-          send({ type: "[DONE]" });
-          controller.close();
-          return;
-        }
-
-        // Unknown action
-        send({ type: "error", message: "Unknown action" });
         send({ type: "[DONE]" });
         controller.close();
       },
@@ -558,7 +885,7 @@ Include proper responsive design for mobile, tablet, and desktop.`;
       headers: { ...corsHeaders, "Content-Type": "text/event-stream" },
     });
   } catch (e) {
-    console.error("Orchestrator error:", e);
+    console.error("[Orchestrator] Error:", e);
     return new Response(
       JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
