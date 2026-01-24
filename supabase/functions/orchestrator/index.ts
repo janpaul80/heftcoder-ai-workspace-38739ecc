@@ -288,12 +288,27 @@ async function callLangdockAgent(
   tools?: object[]
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
   const apiKey = Deno.env.get("LANGDOCK_API_KEY");
+
+  // Safe diagnostics (never include secret values)
+  const envObj = Deno.env.toObject();
+  const envDiag = {
+    LANGDOCK_API_KEY: Boolean(envObj.LANGDOCK_API_KEY && envObj.LANGDOCK_API_KEY.trim() !== ""),
+    AGENT_ARCHITECT_ID: Boolean(envObj.AGENT_ARCHITECT_ID && envObj.AGENT_ARCHITECT_ID.trim() !== ""),
+    AGENT_BACKEND_ID: Boolean(envObj.AGENT_BACKEND_ID && envObj.AGENT_BACKEND_ID.trim() !== ""),
+    AGENT_FRONTEND_ID: Boolean(envObj.AGENT_FRONTEND_ID && envObj.AGENT_FRONTEND_ID.trim() !== ""),
+    AGENT_INTEGRATOR_ID: Boolean(envObj.AGENT_INTEGRATOR_ID && envObj.AGENT_INTEGRATOR_ID.trim() !== ""),
+    AGENT_QA_ID: Boolean(envObj.AGENT_QA_ID && envObj.AGENT_QA_ID.trim() !== ""),
+    AGENT_DEVOPS_ID: Boolean(envObj.AGENT_DEVOPS_ID && envObj.AGENT_DEVOPS_ID.trim() !== ""),
+  };
   
   console.log("[Langdock] API Key:", apiKey ? `Found (${apiKey.length} chars)` : "NOT FOUND");
   console.log("[Langdock] Agent ID:", agentId || "NOT CONFIGURED");
+  console.log("[Env] Required vars present:", envDiag);
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error("LANGDOCK_API_KEY not configured");
+    throw new Error(
+      `LANGDOCK_API_KEY is not configured. Required env present: ${JSON.stringify(envDiag)}`
+    );
   }
 
   if (!agentId || agentId.trim() === "") {
