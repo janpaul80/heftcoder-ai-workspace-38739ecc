@@ -6,7 +6,30 @@ const corsHeaders = {
 };
 
 // Bump this when diagnosing deployments so we can confirm which version is running.
-const BUILD_ID = "orchestrator-2026-01-24-01";
+const BUILD_ID = "orchestrator-2026-01-24-02";
+
+// Handle diagnostic requests to verify secrets are injected
+function handleDiagnostic(): Response {
+  const envObj = Deno.env.toObject();
+  const diag = {
+    build: BUILD_ID,
+    timestamp: new Date().toISOString(),
+    secrets: {
+      LANGDOCK_API_KEY: Boolean(envObj.LANGDOCK_API_KEY && envObj.LANGDOCK_API_KEY.length > 0),
+      AGENT_ARCHITECT_ID: Boolean(envObj.AGENT_ARCHITECT_ID),
+      AGENT_BACKEND_ID: Boolean(envObj.AGENT_BACKEND_ID),
+      AGENT_FRONTEND_ID: Boolean(envObj.AGENT_FRONTEND_ID),
+      AGENT_INTEGRATOR_ID: Boolean(envObj.AGENT_INTEGRATOR_ID),
+      AGENT_QA_ID: Boolean(envObj.AGENT_QA_ID),
+      AGENT_DEVOPS_ID: Boolean(envObj.AGENT_DEVOPS_ID),
+    },
+    apiKeyLength: envObj.LANGDOCK_API_KEY?.length || 0,
+  };
+  console.log("[Diagnostic]", JSON.stringify(diag));
+  return new Response(JSON.stringify(diag, null, 2), {
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 // ============= TYPES =============
 
@@ -886,6 +909,11 @@ serve(async (req) => {
 
   try {
     const { action, message, plan } = await req.json();
+
+    // Diagnostic endpoint - returns JSON showing secret presence
+    if (action === "diag") {
+      return handleDiagnostic();
+    }
 
     if (!message) {
       return new Response(
