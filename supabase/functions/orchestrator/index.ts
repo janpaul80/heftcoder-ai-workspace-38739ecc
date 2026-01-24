@@ -551,13 +551,6 @@ class OrchestrationEngine {
     this.state.phase = "complete";
     this.log("system", "Project complete!");
 
-    this.send({
-      type: "project_complete",
-      files: this.state.files,
-      plan: this.state.plan,
-      progress: 100,
-    });
-
     // Mark all agents complete
     for (const key of Object.keys(this.agentTasks)) {
       if (this.agentTasks[key].status !== "error") {
@@ -566,9 +559,25 @@ class OrchestrationEngine {
       }
     }
 
+    // Send project_complete with all files
+    this.send({
+      type: "project_complete",
+      files: this.state.files,
+      plan: this.state.plan,
+      progress: 100,
+    });
+
+    // Send agents update
     this.send({
       type: "agents_update",
       agents: this.agentTasks,
+    });
+
+    // Send final complete event that the frontend expects
+    this.send({
+      type: "complete",
+      agents: this.agentTasks,
+      summary: `✅ Project "${this.state.plan?.projectName || 'Untitled'}" has been generated successfully! ${this.state.files.length} files created.`,
     });
   }
 

@@ -78,16 +78,63 @@ export function useOrchestrator() {
                 code: event.code || prev[event.agent]?.code,
               },
             }));
+          } else if (event.type === "agents_update") {
+            // Batch update all agents
+            setAgents(event.agents);
           } else if (event.type === "agent_stream") {
             setStreamingOutput(prev => ({
               ...prev,
               [event.agent]: event.output,
             }));
+          } else if (event.type === "file_generated") {
+            // Incrementally build project from generated files
+            setGeneratedProject(prev => {
+              const existing = prev || {
+                name: "Generated Project",
+                type: "landing" as const,
+                files: [],
+              };
+              return {
+                ...existing,
+                files: [
+                  ...existing.files,
+                  {
+                    path: event.file.filename,
+                    content: event.file.content,
+                    language: event.file.language,
+                  },
+                ],
+              };
+            });
+          } else if (event.type === "preview_ready") {
+            // Update project with preview HTML
+            setGeneratedProject(prev => ({
+              ...prev,
+              name: prev?.name || "Generated Project",
+              type: prev?.type || "landing",
+              files: prev?.files || [],
+              previewHtml: event.html,
+            }));
           } else if (event.type === "code_generated") {
             setGeneratedProject(event.project);
-          } else if (event.type === "plan_ready") {
+          } else if (event.type === "plan_ready" || event.type === "plan_created") {
             setPlan(event.plan);
             setPhase("awaiting_approval");
+          } else if (event.type === "project_complete") {
+            // Build final project from all files
+            if (event.files && event.files.length > 0) {
+              const finalProject: GeneratedProject = {
+                name: event.plan?.title || "Generated Project",
+                type: (event.plan?.type as "landing" | "webapp" | "native") || "landing",
+                files: event.files.map((f: { filename: string; content: string; language: string }) => ({
+                  path: f.filename,
+                  content: f.content,
+                  language: f.language,
+                })),
+              };
+              setGeneratedProject(finalProject);
+            }
+            setPhase("complete");
           } else if (event.type === "complete") {
             setAgents(event.agents);
             setSummary(event.summary || null);
