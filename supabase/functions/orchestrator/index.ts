@@ -926,6 +926,17 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Allow simple GET diagnostics in the browser:
+  //   /functions/v1/orchestrator?action=diag
+  // This helps confirm which BUILD_ID is deployed and whether secrets are injected.
+  if (req.method === "GET") {
+    const url = new URL(req.url);
+    const action = url.searchParams.get("action");
+    if (action === "diag") {
+      return handleDiagnostic();
+    }
+  }
+
   try {
     const { action, message, plan } = await req.json();
 
