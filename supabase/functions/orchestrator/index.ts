@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 // Bump this when diagnosing deployments so we can confirm which version is running.
-const BUILD_ID = "orchestrator-2026-01-24-02";
+const BUILD_ID = "orchestrator-2026-01-24-03";
 
 // Handle diagnostic requests to verify secrets are injected
 function handleDiagnostic(): Response {
