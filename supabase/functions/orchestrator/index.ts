@@ -935,6 +935,10 @@ serve(async (req) => {
     if (action === "diag") {
       return handleDiagnostic();
     }
+    // For any other GET, return a simple info response
+    return new Response(JSON.stringify({ info: "Use POST with action + message", build: BUILD_ID }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 
   try {
