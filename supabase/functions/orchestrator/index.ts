@@ -5,6 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Bump this when diagnosing deployments so we can confirm which version is running.
+const BUILD_ID = "orchestrator-2026-01-24-01";
+
 // ============= TYPES =============
 
 type ProjectType = "landing" | "webapp" | "native";
@@ -57,6 +60,15 @@ interface AgentTask {
 interface ToolCall {
   name: string;
   parameters: Record<string, unknown>;
+}
+
+class ConfigError extends Error {
+  diag: Record<string, boolean>;
+  constructor(message: string, diag: Record<string, boolean>) {
+    super(message);
+    this.name = "ConfigError";
+    this.diag = diag;
+  }
 }
 
 interface OrchestrationState {
@@ -304,10 +316,12 @@ async function callLangdockAgent(
   console.log("[Langdock] API Key:", apiKey ? `Found (${apiKey.length} chars)` : "NOT FOUND");
   console.log("[Langdock] Agent ID:", agentId || "NOT CONFIGURED");
   console.log("[Env] Required vars present:", envDiag);
+  console.log("[Build]", BUILD_ID);
   
   if (!apiKey || apiKey.trim() === "") {
-    throw new Error(
-      `LANGDOCK_API_KEY is not configured. Required env present: ${JSON.stringify(envDiag)}`
+    throw new ConfigError(
+      `LANGDOCK_API_KEY is not configured (build: ${BUILD_ID})`,
+      envDiag
     );
   }
 
@@ -810,15 +824,18 @@ When deployed, call: TOOL_CALL: complete_project({"final_output": {...}})`,
 
     } catch (err) {
       console.error("[Orchestration] Planning error:", err);
+      const isConfig = err instanceof ConfigError;
       this.send({
         type: "agent_status",
         agent: "architect",
         status: "error",
         statusLabel: err instanceof Error ? err.message : "Planning failed",
+        ...(isConfig ? { diag: err.diag, build: BUILD_ID } : { build: BUILD_ID }),
       });
       this.send({
         type: "error",
         message: err instanceof Error ? err.message : "Planning failed",
+        ...(isConfig ? { diag: err.diag, build: BUILD_ID } : { build: BUILD_ID }),
       });
     }
   }
