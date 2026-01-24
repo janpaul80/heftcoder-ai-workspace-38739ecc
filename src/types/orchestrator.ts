@@ -59,6 +59,40 @@ export interface AgentsInitEvent {
   agents: Record<string, AgentInfo>;
 }
 
+export interface AgentsUpdateEvent {
+  type: "agents_update";
+  agents: Record<string, AgentInfo>;
+}
+
+export interface GeneratedFile {
+  filename: string;
+  content: string;
+  language: string;
+}
+
+export interface FileGeneratedEvent {
+  type: "file_generated";
+  agent: string;
+  file: GeneratedFile;
+}
+
+export interface PreviewReadyEvent {
+  type: "preview_ready";
+  html: string;
+}
+
+export interface PlanCreatedEvent {
+  type: "plan_created";
+  plan: ProjectPlan;
+}
+
+export interface ProjectCompleteEvent {
+  type: "project_complete";
+  files: GeneratedFile[];
+  plan?: ProjectPlan & { title?: string; type?: string };
+  progress: number;
+}
+
 export interface CodeGeneratedEvent {
   type: "code_generated";
   project: GeneratedProject;
@@ -78,9 +112,14 @@ export interface ErrorEvent {
 
 export type OrchestratorEvent = 
   | PlanReadyEvent 
+  | PlanCreatedEvent
   | AgentStatusEvent 
   | AgentStreamEvent
   | AgentsInitEvent 
+  | AgentsUpdateEvent
+  | FileGeneratedEvent
+  | PreviewReadyEvent
+  | ProjectCompleteEvent
   | CodeGeneratedEvent
   | CompleteEvent 
   | ErrorEvent

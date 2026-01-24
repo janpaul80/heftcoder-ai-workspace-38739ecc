@@ -111,6 +111,7 @@ export function WorkspaceEditor() {
   }, [approvePlan]);
 
   const isActive = phase !== "idle" && phase !== "complete" && phase !== "error";
+  const hasGeneratedFiles = generatedProject && generatedProject.files.length > 0;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -147,7 +148,7 @@ export function WorkspaceEditor() {
             {/* Preview Panel */}
             <div className="flex-1 min-h-0">
               <PreviewPanel 
-                status={isActive ? { status: 'working' } : projectStatus}
+                status={isActive && !hasGeneratedFiles ? { status: 'working' } : projectStatus}
                 project={generatedProject}
               />
             </div>
