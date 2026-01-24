@@ -66,6 +66,7 @@ export interface AgentsUpdateEvent {
 
 export interface GeneratedFile {
   filename: string;
+  path?: string;
   content: string;
   language: string;
 }
