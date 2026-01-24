@@ -385,11 +385,30 @@ async function callLangdockAgent(
   if (!response.ok) {
     const errorText = await response.text();
     console.error(`[Langdock] Error ${response.status}:`, errorText);
-    throw new Error(`Agent call failed: ${response.status}`);
+    // Surface the actual error from Langdock so we can debug
+    throw new Error(`Agent call failed: ${response.status} - ${errorText.slice(0, 500)}`);
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
+  console.log("[Langdock] Raw response keys:", Object.keys(data));
+  
+  // Langdock returns { result: [...], output: {} } format per their docs
+  // Try multiple response formats for compatibility
+  let content = "";
+  if (data.result && Array.isArray(data.result)) {
+    // Langdock format: result array with message objects
+    const textParts = data.result
+      .filter((r: any) => r.content)
+      .flatMap((r: any) => r.content)
+      .filter((c: any) => c.type === "text" && c.text)
+      .map((c: any) => c.text);
+    content = textParts.join("\n");
+  } else if (data.choices?.[0]?.message?.content) {
+    // OpenAI-compatible format
+    content = data.choices[0].message.content;
+  } else if (typeof data.output === "string") {
+    content = data.output;
+  }
   
   // Detect tool calls in the response
   const toolCalls = detectToolCalls(content);
