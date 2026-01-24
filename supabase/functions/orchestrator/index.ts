@@ -329,12 +329,12 @@ async function callLangdockAgent(
     throw new Error("Agent ID not configured");
   }
 
-  const messages = systemPrompt 
-    ? [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ]
-    : [{ role: "user", content: message }];
+  // Langdock Assistant API doesn't support "system" role - embed system prompt in user message
+  const userContent = systemPrompt 
+    ? `${systemPrompt}\n\n---\n\nUser Request: ${message}`
+    : message;
+  
+  const messages = [{ role: "user", content: userContent }];
 
   const requestBody: Record<string, unknown> = {
     assistantId: agentId, // Langdock requires assistantId in body, not URL
