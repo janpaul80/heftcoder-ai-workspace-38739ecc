@@ -1,4 +1,5 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Edge Function: orchestrator
+// Handles multi-agent orchestration for code generation
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -6,7 +7,7 @@ const corsHeaders = {
 };
 
 // Bump this when diagnosing deployments so we can confirm which version is running.
-const BUILD_ID = "orchestrator-2026-01-24-03";
+const BUILD_ID = "orch-v4-2026-01-24";
 
 // Handle diagnostic requests to verify secrets are injected
 function handleDiagnostic(): Response {
@@ -921,7 +922,7 @@ When deployed, call: TOOL_CALL: complete_project({"final_output": {...}})`,
 
 // ============= MAIN HANDLER =============
 
-serve(async (req) => {
+Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
