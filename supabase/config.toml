@@ -4,6 +4,3 @@ project_id = "fylgubkuezvhwchesyzg"
 
 [functions.orchestrator]
 verify_jwt = false
-
-[functions.test-diag]
-verify_jwt = false
