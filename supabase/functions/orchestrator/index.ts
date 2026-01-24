@@ -1,5 +1,6 @@
 // Edge Function: orchestrator
-// Multi-agent orchestration using Lovable AI Gateway
+// Multi-agent orchestration using Langdock AI as execution layer
+// Lovable Cloud handles orchestration/state/UX, Langdock handles model execution
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,7 +8,28 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-lovable-v1";
+const BUILD_ID = "orch-langdock-v1";
+
+// ============= LANGDOCK CONFIGURATION =============
+
+const LANGDOCK_API_BASE = "https://api.langdock.com/agent/v1";
+
+// Agent ID mapping from secrets
+function getAgentId(agentKey: string): string | null {
+  const envMap: Record<string, string> = {
+    architect: "AGENT_ARCHITECT_ID",
+    backend: "AGENT_BACKEND_ID",
+    frontend: "AGENT_FRONTEND_ID",
+    integrator: "AGENT_INTEGRATOR_ID",
+    qa: "AGENT_QA_ID",
+    devops: "AGENT_DEVOPS_ID",
+  };
+  
+  const envVar = envMap[agentKey];
+  if (!envVar) return null;
+  
+  return Deno.env.get(envVar) || null;
+}
 
 // ============= DIAGNOSTIC =============
 
@@ -16,10 +38,16 @@ function handleDiagnostic(): Response {
   const diag = {
     build: BUILD_ID,
     timestamp: new Date().toISOString(),
+    executionLayer: "langdock",
     secrets: {
-      LOVABLE_API_KEY: Boolean(envObj.LOVABLE_API_KEY && envObj.LOVABLE_API_KEY.length > 0),
+      LANGDOCK_API_KEY: Boolean(envObj.LANGDOCK_API_KEY && envObj.LANGDOCK_API_KEY.length > 0),
+      AGENT_ARCHITECT_ID: Boolean(envObj.AGENT_ARCHITECT_ID),
+      AGENT_BACKEND_ID: Boolean(envObj.AGENT_BACKEND_ID),
+      AGENT_FRONTEND_ID: Boolean(envObj.AGENT_FRONTEND_ID),
+      AGENT_INTEGRATOR_ID: Boolean(envObj.AGENT_INTEGRATOR_ID),
+      AGENT_QA_ID: Boolean(envObj.AGENT_QA_ID),
+      AGENT_DEVOPS_ID: Boolean(envObj.AGENT_DEVOPS_ID),
     },
-    apiKeyLength: envObj.LOVABLE_API_KEY?.length || 0,
   };
   return new Response(JSON.stringify(diag, null, 2), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -87,166 +115,157 @@ interface OrchestrationState {
   }>;
 }
 
-// ============= AGENT CONFIGURATION =============
+// ============= AGENT METADATA (for UX display) =============
 
-const AGENTS = {
+const AGENT_METADATA = {
   architect: {
     name: "Planner",
     role: "System design and project structure",
     nextHandoff: "handoff_to_frontend",
-    systemPrompt: `You are a project planner for a code generation system. Analyze the user's request and create a project plan.
-
-IMPORTANT: After creating the plan, you MUST indicate a handoff by including this at the end of your response:
-TOOL_CALL: handoff_to_frontend({"plan_json": <your plan object>})
-
-For landing pages: handoff_to_frontend
-For web apps with backend: handoff_to_backend first
-
-Output a JSON plan first, then the handoff.
-
-Plan format:
-{
-  "projectName": "string",
-  "projectType": "landing" | "webapp" | "native",
-  "description": "Brief description",
-  "techStack": {
-    "frontend": ["HTML", "CSS", "JavaScript"],
-    "backend": ["None"],
-    "database": "None"
-  },
-  "steps": [
-    {"id": "1", "agent": "frontend", "task": "Create structure", "dependencies": []}
-  ],
-  "estimatedTime": "X minutes"
-}`
   },
   backend: {
     name: "Backend",
     role: "API and database implementation",
     nextHandoff: "handoff_to_frontend",
-    systemPrompt: `You are a backend developer. Create APIs and database schemas.
-
-After generating code, include:
-TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`
   },
   frontend: {
     name: "Frontend",
     role: "UI components and styling",
     nextHandoff: "handoff_to_qa",
-    systemPrompt: `You are a frontend developer. Generate complete, working code.
-
-RULES:
-1. Generate complete, runnable code - no placeholders
-2. Use modern best practices and Tailwind CSS
-3. Make it visually stunning and responsive
-4. Output code blocks with language tags
-
-For landing pages:
-- Complete HTML with Tailwind CDN
-- Modern, professional design
-- Mobile-responsive layout
-- Beautiful gradients and shadows
-- Smooth animations
-
-Format your code like:
-\`\`\`html
-<!DOCTYPE html>
-<html>
-...complete code...
-</html>
-\`\`\`
-
-After generating code, include:
-TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`
   },
   integrator: {
     name: "Integrator",
     role: "Connect frontend to backend",
     nextHandoff: "handoff_to_qa",
-    systemPrompt: `You are an integration specialist. Connect frontend to backend APIs.
-
-After integration, include:
-TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`
   },
   qa: {
     name: "QA",
     role: "Testing and quality assurance",
     nextHandoff: "handoff_to_devops",
-    systemPrompt: `You are a QA engineer. Review code for bugs and improvements.
-
-After review, include:
-TOOL_CALL: handoff_to_devops({"project_artifacts": {...}})`
   },
   devops: {
     name: "DevOps",
     role: "Deployment and infrastructure",
     nextHandoff: "complete_project",
-    systemPrompt: `You are a DevOps engineer. Prepare for deployment.
-
-When ready, include:
-TOOL_CALL: complete_project({"final_output": {...}})`
   },
 };
 
-// ============= LOVABLE AI GATEWAY CALL =============
+// ============= LANGDOCK AGENT API CALL =============
 
-async function callLovableAI(
+interface LangdockMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface LangdockRunResponse {
+  id: string;
+  status: "completed" | "failed" | "running";
+  messages: LangdockMessage[];
+  error?: string;
+}
+
+async function callLangdockAgent(
   agentKey: string,
   message: string,
   additionalContext?: string
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
-  const apiKey = Deno.env.get("LOVABLE_API_KEY");
+  const apiKey = Deno.env.get("LANGDOCK_API_KEY");
   
   if (!apiKey) {
-    throw new Error(`LOVABLE_API_KEY is not configured (build: ${BUILD_ID})`);
+    throw new Error(`LANGDOCK_API_KEY is not configured (build: ${BUILD_ID})`);
   }
 
-  const agent = AGENTS[agentKey as keyof typeof AGENTS];
-  if (!agent) {
-    throw new Error(`Unknown agent: ${agentKey}`);
+  const agentId = getAgentId(agentKey);
+  if (!agentId) {
+    throw new Error(`Agent ID not configured for: ${agentKey}. Set AGENT_${agentKey.toUpperCase()}_ID secret.`);
   }
 
-  const systemPrompt = agent.systemPrompt + (additionalContext ? `\n\nContext:\n${additionalContext}` : "");
+  const fullMessage = additionalContext 
+    ? `${message}\n\nContext:\n${additionalContext}`
+    : message;
 
-  console.log(`[LovableAI] Calling agent: ${agentKey}`);
+  console.log(`[Langdock] Calling agent: ${agentKey} (ID: ${agentId.slice(0, 8)}...)`);
   
-  const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  // Step 1: Create a new run
+  const createResponse = await fetch(`${LANGDOCK_API_BASE}/${agentId}/runs`, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
-      ],
-      stream: false,
+      input: fullMessage,
     }),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[LovableAI] Error ${response.status}:`, errorText);
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text();
+    console.error(`[Langdock] Create run error ${createResponse.status}:`, errorText);
     
-    if (response.status === 429) {
-      throw new Error("Rate limit exceeded. Please try again in a moment.");
+    if (createResponse.status === 429) {
+      throw new Error("Langdock rate limit exceeded. Please try again in a moment.");
     }
-    if (response.status === 402) {
-      throw new Error("Payment required. Please add credits to your Lovable workspace.");
+    if (createResponse.status === 401) {
+      throw new Error("Langdock API key is invalid.");
     }
-    throw new Error(`AI call failed: ${response.status} - ${errorText.slice(0, 200)}`);
+    throw new Error(`Langdock agent call failed: ${createResponse.status} - ${errorText.slice(0, 200)}`);
   }
 
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
+  const runData = await createResponse.json();
+  const runId = runData.id;
   
-  console.log(`[LovableAI] Response length: ${content.length}`);
+  console.log(`[Langdock] Run created: ${runId}`);
+
+  // Step 2: Poll for completion (Langdock agents may take time)
+  let attempts = 0;
+  const maxAttempts = 60; // 60 attempts * 2 seconds = 2 minutes max
+  let result: LangdockRunResponse | null = null;
+
+  while (attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2 seconds
+    
+    const statusResponse = await fetch(`${LANGDOCK_API_BASE}/${agentId}/runs/${runId}`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!statusResponse.ok) {
+      console.error(`[Langdock] Status check failed: ${statusResponse.status}`);
+      attempts++;
+      continue;
+    }
+
+    result = await statusResponse.json();
+    console.log(`[Langdock] Run status: ${result?.status} (attempt ${attempts + 1})`);
+
+    if (result?.status === "completed") {
+      break;
+    }
+    
+    if (result?.status === "failed") {
+      throw new Error(`Langdock agent failed: ${result.error || "Unknown error"}`);
+    }
+
+    attempts++;
+  }
+
+  if (!result || result.status !== "completed") {
+    throw new Error("Langdock agent timed out after 2 minutes");
+  }
+
+  // Extract the last assistant message as the response
+  const assistantMessages = result.messages.filter(m => m.role === "assistant");
+  const content = assistantMessages.length > 0 
+    ? assistantMessages[assistantMessages.length - 1].content 
+    : "";
+
+  console.log(`[Langdock] Response length: ${content.length}`);
   
-  // Detect tool calls
+  // Detect tool calls from content
   const toolCalls = detectToolCalls(content);
-  console.log(`[LovableAI] Tool calls detected: ${toolCalls.length}`);
+  console.log(`[Langdock] Tool calls detected: ${toolCalls.length}`);
 
   return { content, toolCalls };
 }
@@ -389,12 +408,12 @@ class OrchestrationEngine {
     }
 
     for (const key of agentOrder) {
-      const agent = AGENTS[key as keyof typeof AGENTS];
-      if (agent) {
+      const meta = AGENT_METADATA[key as keyof typeof AGENT_METADATA];
+      if (meta) {
         this.agentTasks[key] = {
           agentId: key,
-          agentName: agent.name,
-          role: agent.role,
+          agentName: meta.name,
+          role: meta.role,
           status: "idle",
         };
       }
@@ -436,11 +455,13 @@ class OrchestrationEngine {
       this.agentTasks[agentKey].statusLabel = "Working...";
     }
 
+    const meta = AGENT_METADATA[agentKey as keyof typeof AGENT_METADATA];
+    
     this.send({
       type: "agent_status",
       agent: agentKey,
       status: "thinking",
-      statusLabel: `${AGENTS[agentKey as keyof typeof AGENTS]?.name || agentKey} working...`,
+      statusLabel: `${meta?.name || agentKey} working...`,
       progress: this.getProgress(),
     });
 
@@ -448,8 +469,8 @@ class OrchestrationEngine {
   }
 
   private async executeAgent(agentKey: string, context: Record<string, unknown>) {
-    const agent = AGENTS[agentKey as keyof typeof AGENTS];
-    if (!agent) {
+    const meta = AGENT_METADATA[agentKey as keyof typeof AGENT_METADATA];
+    if (!meta) {
       console.error(`[Orchestration] Unknown agent: ${agentKey}`);
       return;
     }
@@ -460,7 +481,8 @@ class OrchestrationEngine {
         ? `Build this project:\n${JSON.stringify(this.state.plan, null, 2)}\n\nContext:\n${contextStr}`
         : `Process this request with context:\n${contextStr}`;
 
-      const { content, toolCalls } = await callLovableAI(agentKey, message);
+      // Call Langdock agent instead of Lovable AI
+      const { content, toolCalls } = await callLangdockAgent(agentKey, message);
 
       // Extract code
       const files = extractCodeBlocks(content);
@@ -542,15 +564,15 @@ class OrchestrationEngine {
   }
 
   private async autoHandoff(agentKey: string, context: Record<string, unknown>) {
-    const agent = AGENTS[agentKey as keyof typeof AGENTS];
-    if (!agent?.nextHandoff) {
+    const meta = AGENT_METADATA[agentKey as keyof typeof AGENT_METADATA];
+    if (!meta?.nextHandoff) {
       console.log(`[Orchestration] No next handoff for ${agentKey}, completing`);
       await this.completeProject(context);
       return;
     }
 
-    console.log(`[Orchestration] Auto-handoff: ${agent.nextHandoff}`);
-    await this.handleToolCall(agent.nextHandoff, context);
+    console.log(`[Orchestration] Auto-handoff: ${meta.nextHandoff}`);
+    await this.handleToolCall(meta.nextHandoff, context);
   }
 
   private async completeProject(context: Record<string, unknown>) {
@@ -595,8 +617,8 @@ class OrchestrationEngine {
     // Initialize architect
     this.agentTasks["architect"] = {
       agentId: "architect",
-      agentName: AGENTS.architect.name,
-      role: AGENTS.architect.role,
+      agentName: AGENT_METADATA.architect.name,
+      role: AGENT_METADATA.architect.role,
       status: "thinking",
       statusLabel: "Analyzing requirements...",
     };
@@ -614,7 +636,8 @@ class OrchestrationEngine {
     });
 
     try {
-      const { content, toolCalls } = await callLovableAI("architect", message);
+      // Call Langdock architect agent
+      const { content, toolCalls } = await callLangdockAgent("architect", message);
 
       // Extract plan
       const plan = extractPlan(content);
