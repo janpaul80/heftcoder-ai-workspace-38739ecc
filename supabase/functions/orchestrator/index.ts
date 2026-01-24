@@ -210,7 +210,11 @@ async function callLangdock(
   message: string,
   additionalContext?: string
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
-  const apiKey = Deno.env.get("LANGDOCK_API_KEY");
+  // Normalize the API key to avoid common misconfiguration issues:
+  // - accidental surrounding whitespace/newlines
+  // - user pasting the whole header value ("Bearer <key>") into the secret
+  const apiKeyRaw = Deno.env.get("LANGDOCK_API_KEY");
+  const apiKey = apiKeyRaw?.trim().replace(/^Bearer\s+/i, "");
   
   if (!apiKey) {
     throw new Error(`LANGDOCK_API_KEY is not configured (build: ${BUILD_ID})`);
