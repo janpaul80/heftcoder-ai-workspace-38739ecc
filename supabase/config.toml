@@ -4,3 +4,6 @@ project_id = "oaqkgutrlarldeldlomd"
 
 [functions.orchestrator]
 verify_jwt = false
+
+[functions.test-diag]
+verify_jwt = false
