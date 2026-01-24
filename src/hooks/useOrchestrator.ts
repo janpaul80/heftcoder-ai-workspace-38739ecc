@@ -88,6 +88,7 @@ export function useOrchestrator() {
             }));
           } else if (event.type === "file_generated") {
             // Incrementally build project from generated files
+            console.log("[useOrchestrator] File generated:", event.file.filename);
             setGeneratedProject(prev => {
               const existing = prev || {
                 name: "Generated Project",
@@ -99,7 +100,7 @@ export function useOrchestrator() {
                 files: [
                   ...existing.files,
                   {
-                    path: event.file.filename,
+                    path: event.file.filename || event.file.path,
                     content: event.file.content,
                     language: event.file.language,
                   },
@@ -122,12 +123,13 @@ export function useOrchestrator() {
             setPhase("awaiting_approval");
           } else if (event.type === "project_complete") {
             // Build final project from all files
+            console.log("[useOrchestrator] Project complete with files:", event.files?.length);
             if (event.files && event.files.length > 0) {
               const finalProject: GeneratedProject = {
-                name: event.plan?.title || "Generated Project",
-                type: (event.plan?.type as "landing" | "webapp" | "native") || "landing",
-                files: event.files.map((f: { filename: string; content: string; language: string }) => ({
-                  path: f.filename,
+                name: event.plan?.projectName || event.plan?.title || "Generated Project",
+                type: (event.plan?.projectType || event.plan?.type as "landing" | "webapp" | "native") || "landing",
+                files: event.files.map((f: { filename?: string; path?: string; content: string; language: string }) => ({
+                  path: f.filename || f.path || "unknown",
                   content: f.content,
                   language: f.language,
                 })),

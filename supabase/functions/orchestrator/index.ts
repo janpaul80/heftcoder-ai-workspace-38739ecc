@@ -53,6 +53,7 @@ interface ProjectPlan {
 }
 
 interface GeneratedFile {
+  filename: string;
   path: string;
   content: string;
   language: string;
@@ -304,17 +305,22 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
     const language = match[1] || "text";
     const code = match[2].trim();
     
-    let path = "code";
-    if (language === "html") path = "index.html";
-    else if (language === "css") path = "styles.css";
-    else if (language === "javascript" || language === "js") path = "script.js";
-    else if (language === "typescript" || language === "ts") path = "app.ts";
-    else if (language === "tsx") path = "App.tsx";
-    else if (language === "jsx") path = "App.jsx";
+    // Skip empty code blocks
+    if (!code || code.length < 10) continue;
     
-    files.push({ path, content: code, language });
+    let filename = "code";
+    if (language === "html") filename = "index.html";
+    else if (language === "css") filename = "styles.css";
+    else if (language === "javascript" || language === "js") filename = "script.js";
+    else if (language === "typescript" || language === "ts") filename = "app.ts";
+    else if (language === "tsx") filename = "App.tsx";
+    else if (language === "jsx") filename = "App.jsx";
+    
+    files.push({ filename, path: filename, content: code, language });
+    console.log(`[Code Extraction] Found ${language} file: ${filename} (${code.length} chars)`);
   }
 
+  console.log(`[Code Extraction] Total files extracted: ${files.length}`);
   return files;
 }
 
