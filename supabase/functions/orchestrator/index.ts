@@ -337,6 +337,7 @@ async function callLangdockAgent(
     : [{ role: "user", content: message }];
 
   const requestBody: Record<string, unknown> = {
+    assistantId: agentId, // Langdock requires assistantId in body, not URL
     messages,
     stream: false,
   };
@@ -347,7 +348,9 @@ async function callLangdockAgent(
     console.log("[Langdock] Passing tools:", tools.map((t: any) => t.name));
   }
 
-  const response = await fetch(`https://api.langdock.com/assistant/v1/chat/${agentId}`, {
+  console.log("[Langdock] Calling API with assistantId:", agentId);
+
+  const response = await fetch("https://api.langdock.com/assistant/v1/chat/completions", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
