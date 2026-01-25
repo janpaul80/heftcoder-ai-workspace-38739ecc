@@ -132,8 +132,8 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
             </Button>
 
             {/* Agents indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary rounded-lg text-sm text-muted-foreground">
-              <img src={hcIcon} alt="HeftCoder" className="h-5 w-5 rounded-sm" />
+            <div className="flex items-center gap-2 px-3 py-2 bg-secondary rounded-lg text-sm text-muted-foreground">
+              <img src={hcIcon} alt="HeftCoder" className="h-7 w-7 rounded" />
               <span>agents</span>
             </div>
           </div>
