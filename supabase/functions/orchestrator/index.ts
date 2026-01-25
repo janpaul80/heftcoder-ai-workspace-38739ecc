@@ -285,9 +285,37 @@ async function callLangdockAssistant(
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content || "";
+  console.log(`[Langdock] Raw response keys:`, Object.keys(data));
   
-  console.log(`[Langdock] Response length: ${content.length}`);
+  // Langdock Assistant API returns: { result: [{ role: "assistant", content: [{ type: "text"|"reasoning", text: "..." }] }] }
+  let content = "";
+  
+  if (data.result && Array.isArray(data.result)) {
+    // Langdock Assistant API format
+    const assistantMessage = data.result.find((m: { role: string }) => m.role === "assistant");
+    if (assistantMessage?.content && Array.isArray(assistantMessage.content)) {
+      // Prefer "text" type blocks for clean output
+      const textBlocks = assistantMessage.content
+        .filter((block: { type: string; text?: string }) => block.type === "text" && block.text)
+        .map((block: { text: string }) => block.text);
+      
+      if (textBlocks.length > 0) {
+        content = textBlocks.join("\n");
+      } else {
+        // Fallback: use all blocks with text (including reasoning) for tool detection and code extraction
+        content = assistantMessage.content
+          .filter((block: { text?: string }) => block.text)
+          .map((block: { text: string }) => block.text)
+          .join("\n");
+      }
+    }
+  } else if (data.choices?.[0]?.message?.content) {
+    // OpenAI-compatible format fallback
+    content = data.choices[0].message.content;
+  }
+  
+  console.log(`[Langdock] Extracted content length: ${content.length}`);
+  console.log(`[Langdock] Content preview:`, content.slice(0, 300));
   
   // Detect tool calls from content
   const toolCalls = detectToolCalls(content);
