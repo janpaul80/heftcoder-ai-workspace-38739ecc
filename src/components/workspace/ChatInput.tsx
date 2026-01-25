@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Paperclip, Send, Bot } from 'lucide-react';
+import { Paperclip, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { VoiceButton } from './VoiceButton';
 import type { Attachment } from '@/types/workspace';
+import hcIcon from '@/assets/hc-icon.png';
 
 interface ChatInputProps {
   onSend: (message: string, attachments: Attachment[]) => void;
@@ -132,7 +133,7 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
             {/* Agents indicator */}
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-sm text-muted-foreground">
-              <Bot className="h-4 w-4 text-primary" />
+              <img src={hcIcon} alt="HeftCoder" className="h-4 w-4 rounded-sm" />
               <span>agents</span>
             </div>
           </div>
