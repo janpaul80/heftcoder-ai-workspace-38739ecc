@@ -2,12 +2,12 @@ import { useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { AgentProgressBar } from './AgentProgressBar';
-import type { Message, Attachment, AIModel } from '@/types/workspace';
+import type { Message, Attachment } from '@/types/workspace';
 import type { AgentInfo, OrchestratorPhase } from '@/types/orchestrator';
 
 interface ChatPanelProps {
   messages: Message[];
-  onSendMessage: (message: string, attachments: Attachment[], model: AIModel) => void;
+  onSendMessage: (message: string, attachments: Attachment[]) => void;
   isLoading?: boolean;
   agents?: Record<string, AgentInfo>;
   phase?: OrchestratorPhase;
