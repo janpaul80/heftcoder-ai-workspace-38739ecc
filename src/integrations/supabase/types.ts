@@ -14,7 +14,95 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      project_history: {
+        Row: {
+          created_at: string
+          description: string | null
+          files: Json | null
+          id: string
+          name: string
+          original_prompt: string
+          preview_html: string | null
+          project_type: string
+          template_id: string | null
+          thumbnail_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          files?: Json | null
+          id?: string
+          name: string
+          original_prompt: string
+          preview_html?: string | null
+          project_type: string
+          template_id?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          files?: Json | null
+          id?: string
+          name?: string
+          original_prompt?: string
+          preview_html?: string | null
+          project_type?: string
+          template_id?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_history_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      templates: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          is_featured: boolean | null
+          name: string
+          prompt: string
+          tags: string[] | null
+          thumbnail_url: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_featured?: boolean | null
+          name: string
+          prompt: string
+          tags?: string[] | null
+          thumbnail_url?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_featured?: boolean | null
+          name?: string
+          prompt?: string
+          tags?: string[] | null
+          thumbnail_url?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -4,7 +4,9 @@ import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
-import type { Message, Attachment, ProjectStatus, UserTier } from '@/types/workspace';
+import type { Message, Attachment, ProjectStatus, UserTier, GeneratedProject } from '@/types/workspace';
+import type { Template } from '@/hooks/useTemplates';
+import type { ProjectHistoryItem } from '@/hooks/useProjectHistory';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 export function WorkspaceEditor() {
@@ -13,6 +15,7 @@ export function WorkspaceEditor() {
   const [isLoading, setIsLoading] = useState(false);
   const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
   const [userTier] = useState<UserTier>('pro');
+  const [loadedProject, setLoadedProject] = useState<GeneratedProject | null>(null);
   
   const { 
     agents, 
@@ -31,6 +34,7 @@ export function WorkspaceEditor() {
   useEffect(() => {
     if (generatedProject && generatedProject.files.length > 0) {
       setProjectStatus({ status: 'complete' });
+      setLoadedProject(null); // Clear loaded project when new one is generated
     }
   }, [generatedProject]);
 
@@ -65,6 +69,7 @@ export function WorkspaceEditor() {
     async (content: string, attachments: Attachment[]) => {
       // Reset orchestrator for new request
       reset();
+      setLoadedProject(null);
       
       const userMessage: Message = {
         id: crypto.randomUUID(),
@@ -95,6 +100,33 @@ export function WorkspaceEditor() {
     [requestPlan, reset]
   );
 
+  const handleSelectTemplate = useCallback((template: Template) => {
+    // Use the template's prompt to generate the project
+    handleSendMessage(template.prompt, []);
+  }, [handleSendMessage]);
+
+  const handleSelectProject = useCallback((project: ProjectHistoryItem) => {
+    // Load the project from history
+    const loaded: GeneratedProject = {
+      type: project.project_type as 'landing' | 'webapp' | 'native',
+      name: project.name,
+      files: project.files,
+      previewHtml: project.preview_html || undefined,
+    };
+    
+    setLoadedProject(loaded);
+    setProjectStatus({ status: 'complete' });
+    
+    // Add a message showing the loaded project
+    const loadMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `📂 **Loaded project:** ${project.name}\n\nOriginal request: "${project.original_prompt}"`,
+      timestamp: new Date(),
+    };
+    setMessages([loadMessage]);
+  }, []);
+
   const handleApprove = useCallback(async () => {
     // Add approval message
     const approvalMessage: Message = {
@@ -111,6 +143,7 @@ export function WorkspaceEditor() {
 
   const isActive = phase !== "idle" && phase !== "complete" && phase !== "error";
   const hasGeneratedFiles = generatedProject && generatedProject.files.length > 0;
+  const displayProject = loadedProject || generatedProject;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -124,6 +157,8 @@ export function WorkspaceEditor() {
           <ChatPanel
             messages={messages}
             onSendMessage={handleSendMessage}
+            onSelectTemplate={handleSelectTemplate}
+            onSelectProject={handleSelectProject}
             isLoading={isLoading}
             agents={agents}
             phase={phase}
@@ -134,8 +169,8 @@ export function WorkspaceEditor() {
 
         <ResizablePanel defaultSize={60} minSize={45} maxSize={75}>
           <PreviewPanel 
-            status={isActive && !hasGeneratedFiles ? { status: 'working' } : projectStatus}
-            project={generatedProject}
+            status={isActive && !hasGeneratedFiles && !loadedProject ? { status: 'working' } : projectStatus}
+            project={displayProject}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
