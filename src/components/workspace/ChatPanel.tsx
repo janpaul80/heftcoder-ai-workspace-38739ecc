@@ -1,15 +1,19 @@
 import { useRef, useEffect } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { AgentProgressBar } from './AgentProgressBar';
 import type { Message, Attachment, AIModel } from '@/types/workspace';
+import type { AgentInfo, OrchestratorPhase } from '@/types/orchestrator';
 
 interface ChatPanelProps {
   messages: Message[];
   onSendMessage: (message: string, attachments: Attachment[], model: AIModel) => void;
   isLoading?: boolean;
+  agents?: Record<string, AgentInfo>;
+  phase?: OrchestratorPhase;
 }
 
-export function ChatPanel({ messages, onSendMessage, isLoading }: ChatPanelProps) {
+export function ChatPanel({ messages, onSendMessage, isLoading, agents = {}, phase = 'idle' }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,9 +35,15 @@ export function ChatPanel({ messages, onSendMessage, isLoading }: ChatPanelProps
             </p>
           </div>
         ) : (
-          messages.map((message) => (
-            <ChatMessage key={message.id} message={message} />
-          ))
+          <>
+            {/* Agent Progress Bar - inline in chat */}
+            {phase !== 'idle' && Object.keys(agents).length > 0 && (
+              <AgentProgressBar agents={agents} phase={phase} />
+            )}
+            {messages.map((message) => (
+              <ChatMessage key={message.id} message={message} />
+            ))}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>

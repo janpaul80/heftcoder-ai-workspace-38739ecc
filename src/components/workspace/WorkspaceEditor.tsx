@@ -126,6 +126,8 @@ export function WorkspaceEditor() {
             messages={messages}
             onSendMessage={handleSendMessage}
             isLoading={isLoading}
+            agents={agents}
+            phase={phase}
           />
         </ResizablePanel>
 
