@@ -1,6 +1,6 @@
 // Edge Function: orchestrator
-// Multi-agent orchestration using Langdock AI (OpenAI-compatible Chat Completions API)
-// Lovable Cloud handles orchestration/state/UX, Langdock handles model execution
+// Multi-agent orchestration using Langdock Assistant API
+// Lovable Cloud handles orchestration/state/UX, Langdock handles agent execution
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,27 +8,43 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-langdock-v2";
+const BUILD_ID = "orch-langdock-assistant-v1";
 
-// ============= LANGDOCK CONFIGURATION =============
+// ============= LANGDOCK ASSISTANT API CONFIGURATION =============
 
-const LANGDOCK_API_URL = "https://api.langdock.com/v1/chat/completions";
+// Using Langdock Assistant API (NOT the Model API)
+const LANGDOCK_ASSISTANT_API_URL = "https://api.langdock.com/assistant/v1/chat/completions";
 
-// Default model - can be overridden per agent
-const DEFAULT_MODEL = "claude-sonnet-4";
+// Environment variable names for each agent's assistantId
+const AGENT_ASSISTANT_ENV_VARS: Record<string, string> = {
+  architect: "LANGDOCK_ASSISTANT_ARCHITECT",
+  backend: "LANGDOCK_ASSISTANT_BACKEND",
+  frontend: "LANGDOCK_ASSISTANT_FRONTEND",
+  integrator: "LANGDOCK_ASSISTANT_INTEGRATOR",
+  qa: "LANGDOCK_ASSISTANT_QA",
+  devops: "LANGDOCK_ASSISTANT_DEVOPS",
+};
 
 // ============= DIAGNOSTIC =============
 
 function handleDiagnostic(): Response {
   const envObj = Deno.env.toObject();
+  
+  // Check which assistant IDs are configured
+  const assistantStatus: Record<string, boolean> = {};
+  for (const [agent, envVar] of Object.entries(AGENT_ASSISTANT_ENV_VARS)) {
+    assistantStatus[agent] = Boolean(envObj[envVar] && envObj[envVar].length > 0);
+  }
+
   const diag = {
     build: BUILD_ID,
     timestamp: new Date().toISOString(),
-    executionLayer: "langdock-chat-completions",
-    apiUrl: LANGDOCK_API_URL,
+    executionLayer: "langdock-assistant-api",
+    apiUrl: LANGDOCK_ASSISTANT_API_URL,
     secrets: {
       LANGDOCK_API_KEY: Boolean(envObj.LANGDOCK_API_KEY && envObj.LANGDOCK_API_KEY.length > 0),
     },
+    assistants: assistantStatus,
   };
   return new Response(JSON.stringify(diag, null, 2), {
     headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -98,11 +114,11 @@ interface OrchestrationState {
 
 // ============= AGENT CONFIGURATION =============
 
+// Agent metadata (no model specified - each agent uses its own Langdock Assistant)
 const AGENTS = {
   architect: {
     name: "Planner",
     role: "System design and project structure",
-    model: "claude-sonnet-4", // Best for planning/reasoning
     nextHandoff: "handoff_to_frontend",
     systemPrompt: `You are a project planner for a code generation system. Analyze the user's request and create a project plan.
 
@@ -133,7 +149,6 @@ Plan format:
   backend: {
     name: "Backend",
     role: "API and database implementation",
-    model: "claude-sonnet-4",
     nextHandoff: "handoff_to_frontend",
     systemPrompt: `You are a backend developer. Create APIs and database schemas.
 
@@ -143,7 +158,6 @@ TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`
   frontend: {
     name: "Frontend",
     role: "UI components and styling",
-    model: "claude-sonnet-4", // Best for code generation
     nextHandoff: "handoff_to_qa",
     systemPrompt: `You are a frontend developer. Generate complete, working code.
 
@@ -174,7 +188,6 @@ TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`
   integrator: {
     name: "Integrator",
     role: "Connect frontend to backend",
-    model: "claude-sonnet-4",
     nextHandoff: "handoff_to_qa",
     systemPrompt: `You are an integration specialist. Connect frontend to backend APIs.
 
@@ -184,7 +197,6 @@ TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`
   qa: {
     name: "QA",
     role: "Testing and quality assurance",
-    model: "claude-sonnet-4",
     nextHandoff: "handoff_to_devops",
     systemPrompt: `You are a QA engineer. Review code for bugs and improvements.
 
@@ -194,7 +206,6 @@ TOOL_CALL: handoff_to_devops({"project_artifacts": {...}})`
   devops: {
     name: "DevOps",
     role: "Deployment and infrastructure",
-    model: "claude-sonnet-4",
     nextHandoff: "complete_project",
     systemPrompt: `You are a DevOps engineer. Prepare for deployment.
 
@@ -203,16 +214,14 @@ TOOL_CALL: complete_project({"final_output": {...}})`
   },
 };
 
-// ============= LANGDOCK CHAT COMPLETIONS API CALL =============
+// ============= LANGDOCK ASSISTANT API CALL =============
 
-async function callLangdock(
+async function callLangdockAssistant(
   agentKey: string,
   message: string,
   additionalContext?: string
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
-  // Normalize the API key to avoid common misconfiguration issues:
-  // - accidental surrounding whitespace/newlines
-  // - user pasting the whole header value ("Bearer <key>") into the secret
+  // Normalize the API key to avoid common misconfiguration issues
   const apiKeyRaw = Deno.env.get("LANGDOCK_API_KEY");
   const apiKey = apiKeyRaw?.trim().replace(/^Bearer\s+/i, "");
   
@@ -225,24 +234,34 @@ async function callLangdock(
     throw new Error(`Unknown agent: ${agentKey}`);
   }
 
-  const systemPrompt = agent.systemPrompt + (additionalContext ? `\n\nContext:\n${additionalContext}` : "");
-  const model = agent.model || DEFAULT_MODEL;
+  // Get the assistantId for this agent from environment variables
+  const envVarName = AGENT_ASSISTANT_ENV_VARS[agentKey];
+  if (!envVarName) {
+    throw new Error(`No environment variable mapping for agent: ${agentKey}`);
+  }
 
-  console.log(`[Langdock] Calling agent: ${agentKey} with model: ${model}`);
+  const assistantId = Deno.env.get(envVarName)?.trim();
+  if (!assistantId) {
+    throw new Error(`${envVarName} is not configured for agent: ${agentKey} (build: ${BUILD_ID})`);
+  }
+
+  // Build the full message with system prompt context
+  const systemPrompt = agent.systemPrompt + (additionalContext ? `\n\nContext:\n${additionalContext}` : "");
+  const fullMessage = `${systemPrompt}\n\n---\n\nUser Request:\n${message}`;
+
+  console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
   
-  const response = await fetch(LANGDOCK_API_URL, {
+  const response = await fetch(LANGDOCK_ASSISTANT_API_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: model,
+      assistantId: assistantId,
       messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: message }
+        { role: "user", content: fullMessage }
       ],
-      stream: false,
     }),
   });
 
@@ -254,12 +273,15 @@ async function callLangdock(
       throw new Error("Langdock rate limit exceeded. Please try again in a moment.");
     }
     if (response.status === 401) {
-      throw new Error("Langdock API key is invalid.");
+      throw new Error("Langdock API key is invalid. Make sure you're using an Agent API key.");
     }
     if (response.status === 402) {
       throw new Error("Langdock payment required. Please check your account.");
     }
-    throw new Error(`Langdock call failed: ${response.status} - ${errorText.slice(0, 200)}`);
+    if (response.status === 404) {
+      throw new Error(`Langdock assistant not found: ${assistantId}. Check ${envVarName}.`);
+    }
+    throw new Error(`Langdock assistant call failed: ${response.status} - ${errorText.slice(0, 200)}`);
   }
 
   const data = await response.json();
@@ -484,7 +506,7 @@ class OrchestrationEngine {
         : `Process this request with context:\n${contextStr}`;
 
       // Call Langdock via chat completions API
-      const { content, toolCalls } = await callLangdock(agentKey, message);
+      const { content, toolCalls } = await callLangdockAssistant(agentKey, message);
 
       // Extract code
       const files = extractCodeBlocks(content);
@@ -638,8 +660,8 @@ class OrchestrationEngine {
     });
 
     try {
-      // Call Langdock architect via chat completions
-      const { content, toolCalls } = await callLangdock("architect", message);
+      // Call Langdock architect via Assistant API
+      const { content, toolCalls } = await callLangdockAssistant("architect", message);
 
       // Extract plan
       const plan = extractPlan(content);
