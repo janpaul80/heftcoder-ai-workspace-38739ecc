@@ -3,7 +3,6 @@ import { TopNav } from './TopNav';
 import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
-import { AgentPanel } from './AgentPanel';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import type { Message, Attachment, AIModel, ProjectStatus, UserTier } from '@/types/workspace';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
@@ -134,27 +133,10 @@ export function WorkspaceEditor() {
         <ResizableHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors data-[resize-handle-active]:bg-primary" />
 
         <ResizablePanel defaultSize={60} minSize={45} maxSize={75}>
-          <div className="h-full flex flex-col overflow-hidden">
-            {/* Agent Orchestra Panel */}
-            {phase !== "idle" && (
-              <div className="border-b border-border bg-card/50 backdrop-blur-sm max-h-[40%] overflow-y-auto scrollbar-thin">
-                <AgentPanel 
-                  agents={agents} 
-                  phase={phase} 
-                  plan={plan}
-                  onApprove={handleApprove}
-                  streamingOutput={streamingOutput}
-                />
-              </div>
-            )}
-            {/* Preview Panel */}
-            <div className="flex-1 min-h-0">
-              <PreviewPanel 
-                status={isActive && !hasGeneratedFiles ? { status: 'working' } : projectStatus}
-                project={generatedProject}
-              />
-            </div>
-          </div>
+          <PreviewPanel 
+            status={isActive && !hasGeneratedFiles ? { status: 'working' } : projectStatus}
+            project={generatedProject}
+          />
         </ResizablePanel>
       </ResizablePanelGroup>
 

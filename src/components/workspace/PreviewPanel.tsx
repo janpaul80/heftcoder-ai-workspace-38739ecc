@@ -308,9 +308,9 @@ export function PreviewPanel({ status, project }: PreviewPanelProps) {
 
       {/* Content */}
       <div className="flex-1 min-h-0">
-        {status.status === 'idle' && <IdleState />}
+        {status.status === 'idle' && !hasProject && <IdleState />}
         {status.status === 'working' && !hasProject && <WorkingIndicator />}
-        {status.status === 'error' && <ErrorState message={status.message} />}
+        {status.status === 'error' && !hasProject && <ErrorState message={status.message} />}
         
         {hasProject && (
           viewMode === 'preview' 
