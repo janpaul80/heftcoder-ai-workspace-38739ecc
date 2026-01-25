@@ -414,6 +414,7 @@ class OrchestrationEngine {
   private state: OrchestrationState;
   private send: (data: object) => void;
   private agentTasks: Record<string, AgentTask> = {};
+  private originalRequest: string = "";
 
   constructor(send: (data: object) => void) {
     this.send = send;
@@ -517,10 +518,10 @@ class OrchestrationEngine {
       progress: this.getProgress(),
     });
 
-    await this.executeAgent(agentKey, context);
+    await this.executeAgent(agentKey, context, this.originalRequest);
   }
 
-  private async executeAgent(agentKey: string, context: Record<string, unknown>) {
+  private async executeAgent(agentKey: string, context: Record<string, unknown>, originalRequest?: string) {
     const agent = AGENTS[agentKey as keyof typeof AGENTS];
     if (!agent) {
       console.error(`[Orchestration] Unknown agent: ${agentKey}`);
@@ -528,10 +529,50 @@ class OrchestrationEngine {
     }
 
     try {
-      const contextStr = JSON.stringify(context, null, 2);
-      const message = this.state.plan 
-        ? `Build this project:\n${JSON.stringify(this.state.plan, null, 2)}\n\nContext:\n${contextStr}`
-        : `Process this request with context:\n${contextStr}`;
+      // Build a clear, actionable message for the agent
+      let message = "";
+      
+      if (agentKey === "frontend") {
+        // Frontend needs explicit instructions to generate code
+        message = `Generate complete, working HTML code for this project.
+
+PROJECT REQUIREMENTS:
+${this.state.plan ? `Name: ${this.state.plan.projectName}
+Type: ${this.state.plan.projectType}
+Description: ${this.state.plan.description}` : 'See context below'}
+
+Original User Request: ${originalRequest || this.originalRequest || 'Build the requested project'}
+
+IMPORTANT: You MUST output complete HTML code in a code block like:
+\`\`\`html
+<!DOCTYPE html>
+<html>
+...full working code...
+</html>
+\`\`\`
+
+Make it visually stunning with Tailwind CSS (include CDN). Include all sections, images, and interactivity.`;
+      } else if (agentKey === "qa") {
+        // QA needs the actual generated files to review
+        const generatedCode = this.state.files.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+        message = `Review this generated code for quality and bugs:
+
+${generatedCode || 'No code files generated yet.'}
+
+If the code looks good, approve it. If there are issues, list them.`;
+      } else if (agentKey === "devops") {
+        message = `Prepare deployment for this project:
+${this.state.plan ? JSON.stringify(this.state.plan, null, 2) : 'See context'}
+
+Files generated: ${this.state.files.length}
+
+Confirm deployment readiness.`;
+      } else {
+        const contextStr = JSON.stringify(context, null, 2);
+        message = this.state.plan 
+          ? `Build this project:\n${JSON.stringify(this.state.plan, null, 2)}\n\nContext:\n${contextStr}`
+          : `Process this request with context:\n${contextStr}`;
+      }
 
       // Call Langdock via chat completions API
       const { content, toolCalls } = await callLangdockAssistant(agentKey, message);
@@ -662,6 +703,7 @@ class OrchestrationEngine {
   }
 
   async startPlanning(message: string) {
+    this.originalRequest = message; // Store for later agents
     this.state.phase = "planning";
     this.state.currentAgent = "architect";
     this.log("architect", "Starting planning...");
