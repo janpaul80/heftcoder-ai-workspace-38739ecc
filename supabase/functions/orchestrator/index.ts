@@ -216,6 +216,47 @@ TOOL_CALL: complete_project({"final_output": {...}})`
 
 // ============= LANGDOCK ASSISTANT API CALL =============
 
+// Retry helper with exponential backoff
+async function fetchWithRetry(
+  url: string, 
+  options: RequestInit, 
+  maxRetries = 3,
+  baseDelayMs = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+      
+      const response = await fetch(url, { 
+        ...options, 
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
+      return response;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      const isRetryable = lastError.message.includes('connection reset') || 
+                          lastError.message.includes('network') ||
+                          lastError.message.includes('timeout') ||
+                          lastError.message.includes('abort');
+      
+      if (!isRetryable || attempt === maxRetries - 1) {
+        throw lastError;
+      }
+      
+      const delay = baseDelayMs * Math.pow(2, attempt);
+      console.log(`[Langdock] Retry ${attempt + 1}/${maxRetries} after ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  
+  throw lastError || new Error("Max retries exceeded");
+}
+
 async function callLangdockAssistant(
   agentKey: string,
   message: string,
@@ -251,7 +292,7 @@ async function callLangdockAssistant(
 
   console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
   
-  const response = await fetch(LANGDOCK_ASSISTANT_API_URL, {
+  const response = await fetchWithRetry(LANGDOCK_ASSISTANT_API_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
