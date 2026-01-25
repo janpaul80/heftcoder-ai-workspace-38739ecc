@@ -1,7 +1,9 @@
-import { FolderOpen, Github, Upload, Download } from 'lucide-react';
+import { FolderOpen, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import hcIcon from '@/assets/hc-icon.png';
 import type { UserTier } from '@/types/workspace';
+import { GitHubPopover } from './GitHubPopover';
+import { PublishButton } from './PublishButton';
 
 interface TopNavProps {
   onFileExplorerOpen: () => void;
@@ -31,23 +33,10 @@ export function TopNav({ onFileExplorerOpen, userTier }: TopNavProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground hover:bg-secondary"
-          title="Push to GitHub"
-        >
-          <Github className="h-5 w-5" />
-        </Button>
-        
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-muted-foreground hover:text-foreground hover:bg-secondary"
-          title="Deploy to Vercel"
-        >
-          <Upload className="h-5 w-5" />
-        </Button>
+        <GitHubPopover 
+          isConnected={true}
+          repoName="janpaul80/heftcoder-project"
+        />
         
         <Button
           variant="ghost"
@@ -58,6 +47,8 @@ export function TopNav({ onFileExplorerOpen, userTier }: TopNavProps) {
         >
           <Download className="h-5 w-5" />
         </Button>
+
+        <PublishButton projectName="landing-page" />
       </div>
     </header>
   );

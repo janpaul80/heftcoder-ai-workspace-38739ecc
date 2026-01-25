@@ -1,19 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Paperclip, Send } from 'lucide-react';
+import { Paperclip, Send, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ModelSelector, MODELS } from './ModelSelector';
 import { VoiceButton } from './VoiceButton';
-import type { AIModel, Attachment } from '@/types/workspace';
+import type { Attachment } from '@/types/workspace';
 
 interface ChatInputProps {
-  onSend: (message: string, attachments: Attachment[], model: AIModel) => void;
+  onSend: (message: string, attachments: Attachment[]) => void;
   disabled?: boolean;
 }
 
 export function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [selectedModel, setSelectedModel] = useState<AIModel>(MODELS[0]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -29,10 +27,10 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
 
   const handleSend = useCallback(() => {
     if (!message.trim() && attachments.length === 0) return;
-    onSend(message, attachments, selectedModel);
+    onSend(message, attachments);
     setMessage('');
     setAttachments([]);
-  }, [message, attachments, selectedModel, onSend]);
+  }, [message, attachments, onSend]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -132,11 +130,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
               <Paperclip className="h-4 w-4" />
             </Button>
 
-            {/* Model selector */}
-            <ModelSelector
-              selectedModel={selectedModel}
-              onModelChange={setSelectedModel}
-            />
+            {/* Agents indicator */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-secondary rounded-lg text-sm text-muted-foreground">
+              <Bot className="h-4 w-4 text-primary" />
+              <span>agents</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">

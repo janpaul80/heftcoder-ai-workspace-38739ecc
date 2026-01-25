@@ -4,7 +4,7 @@ import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
-import type { Message, Attachment, AIModel, ProjectStatus, UserTier } from '@/types/workspace';
+import type { Message, Attachment, ProjectStatus, UserTier } from '@/types/workspace';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 
 export function WorkspaceEditor() {
@@ -62,7 +62,7 @@ export function WorkspaceEditor() {
   }, [phase, error]);
 
   const handleSendMessage = useCallback(
-    async (content: string, attachments: Attachment[], model: AIModel) => {
+    async (content: string, attachments: Attachment[]) => {
       // Reset orchestrator for new request
       reset();
       
