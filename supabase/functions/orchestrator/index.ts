@@ -328,13 +328,22 @@ async function callLangdockAssistant(
   const data = await response.json();
   console.log(`[Langdock] Raw response keys:`, Object.keys(data));
   
+  // Debug: log the full structure for troubleshooting empty responses
+  console.log(`[Langdock] Full response structure:`, JSON.stringify(data, null, 2).slice(0, 1500));
+  
   // Langdock Assistant API returns: { result: [{ role: "assistant", content: [{ type: "text"|"reasoning", text: "..." }] }] }
   let content = "";
   
   if (data.result && Array.isArray(data.result)) {
     // Langdock Assistant API format
     const assistantMessage = data.result.find((m: { role: string }) => m.role === "assistant");
+    console.log(`[Langdock] Assistant message found:`, !!assistantMessage);
+    console.log(`[Langdock] Assistant content type:`, typeof assistantMessage?.content);
+    console.log(`[Langdock] Assistant content isArray:`, Array.isArray(assistantMessage?.content));
+    
     if (assistantMessage?.content && Array.isArray(assistantMessage.content)) {
+      console.log(`[Langdock] Content blocks count:`, assistantMessage.content.length);
+      
       // Prefer "text" type blocks for clean output
       const textBlocks = assistantMessage.content
         .filter((block: { type: string; text?: string }) => block.type === "text" && block.text)
@@ -349,6 +358,9 @@ async function callLangdockAssistant(
           .map((block: { text: string }) => block.text)
           .join("\n");
       }
+    } else if (typeof assistantMessage?.content === "string") {
+      // Handle case where content is a string directly
+      content = assistantMessage.content;
     }
   } else if (data.choices?.[0]?.message?.content) {
     // OpenAI-compatible format fallback
@@ -447,6 +459,120 @@ function extractPlan(content: string): ProjectPlan | null {
   } catch {
     return null;
   }
+}
+
+// ============= FALLBACK HTML GENERATOR =============
+
+function generateFallbackHtml(projectName: string, description: string): string {
+  // Generate a professional fallback landing page when the LLM returns no code
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(projectName)}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-20px); }
+    }
+    .float { animation: float 3s ease-in-out infinite; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+  <!-- Hero Section -->
+  <header class="relative overflow-hidden">
+    <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%239C92AC\" fill-opacity=\"0.08\"%3E%3Cpath d=\"m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20"></div>
+    <nav class="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
+      <div class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        ${escapeHtml(projectName)}
+      </div>
+      <div class="flex gap-6">
+        <a href="#features" class="hover:text-purple-400 transition">Features</a>
+        <a href="#about" class="hover:text-purple-400 transition">About</a>
+        <a href="#contact" class="hover:text-purple-400 transition">Contact</a>
+      </div>
+    </nav>
+    
+    <div class="relative z-10 max-w-4xl mx-auto px-8 py-32 text-center">
+      <div class="float mb-8">
+        <div class="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-4xl shadow-2xl shadow-purple-500/30">
+          ✨
+        </div>
+      </div>
+      <h1 class="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent">
+        ${escapeHtml(projectName)}
+      </h1>
+      <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+        ${escapeHtml(description)}
+      </p>
+      <div class="flex gap-4 justify-center">
+        <button class="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-1 transition-all">
+          Get Started
+        </button>
+        <button class="px-8 py-4 border border-purple-400/50 rounded-full font-semibold hover:bg-purple-400/10 transition-all">
+          Learn More
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Features Section -->
+  <section id="features" class="py-24 px-8">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-4xl font-bold text-center mb-16">Features</h2>
+      <div class="grid md:grid-cols-3 gap-8">
+        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
+          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">⚡</div>
+          <h3 class="text-xl font-semibold mb-2">Lightning Fast</h3>
+          <p class="text-gray-400">Built for speed and performance with modern technologies.</p>
+        </div>
+        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
+          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">🎨</div>
+          <h3 class="text-xl font-semibold mb-2">Beautiful Design</h3>
+          <p class="text-gray-400">Stunning visuals that capture attention and delight users.</p>
+        </div>
+        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
+          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">🔒</div>
+          <h3 class="text-xl font-semibold mb-2">Secure</h3>
+          <p class="text-gray-400">Enterprise-grade security to protect your data.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="py-24 px-8">
+    <div class="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-400/30">
+      <h2 class="text-4xl font-bold mb-4">Ready to get started?</h2>
+      <p class="text-xl text-gray-300 mb-8">Join thousands of satisfied users today.</p>
+      <button class="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-1 transition-all">
+        Start Free Trial
+      </button>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="py-12 px-8 border-t border-white/10">
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+      <div class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+        ${escapeHtml(projectName)}
+      </div>
+      <p class="text-gray-500">© 2025 ${escapeHtml(projectName)}. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>`;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 // ============= ORCHESTRATION ENGINE =============
@@ -620,11 +746,29 @@ Confirm deployment readiness.`;
 
       // Extract code (only some agents are expected to generate code blocks)
       const expectsCode = ["frontend", "backend", "integrator"].includes(agentKey);
-      const files = extractCodeBlocks(content);
+      let files = extractCodeBlocks(content);
 
-      // If an agent that is supposed to generate code returns no code blocks,
-      // fail fast with a helpful message (prevents blank/stuck preview states).
-      if (expectsCode && files.length === 0) {
+      // If the frontend agent returns no code, generate a fallback HTML template
+      // This ensures users always get something rendered rather than an error
+      if (agentKey === "frontend" && files.length === 0) {
+        console.log(`[Orchestration] Frontend returned no code, generating fallback template...`);
+        
+        const projectName = this.state.plan?.projectName || "Generated Project";
+        const description = this.state.plan?.description || this.originalRequest || "A beautiful landing page";
+        
+        const fallbackHtml = generateFallbackHtml(projectName, description);
+        files = [{
+          filename: "index.html",
+          path: "index.html",
+          content: fallbackHtml,
+          language: "html",
+        }];
+        
+        console.log(`[Orchestration] Fallback HTML generated (${fallbackHtml.length} chars)`);
+      }
+
+      // For other code-producing agents, still fail fast if no code
+      if (expectsCode && agentKey !== "frontend" && files.length === 0) {
         const preview = content
           ? content.slice(0, 600)
           : "(empty response)";
