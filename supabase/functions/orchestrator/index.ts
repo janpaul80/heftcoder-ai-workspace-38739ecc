@@ -17,12 +17,12 @@ const LANGDOCK_ASSISTANT_API_URL = "https://api.langdock.com/assistant/v1/chat/c
 
 // Environment variable names for each agent's assistantId
 const AGENT_ASSISTANT_ENV_VARS: Record<string, string> = {
-  architect: "LANGDOCK_ASSISTANT_ARCHITECT",
-  backend: "LANGDOCK_ASSISTANT_BACKEND",
-  frontend: "LANGDOCK_ASSISTANT_FRONTEND",
-  integrator: "LANGDOCK_ASSISTANT_INTEGRATOR",
-  qa: "LANGDOCK_ASSISTANT_QA",
-  devops: "LANGDOCK_ASSISTANT_DEVOPS",
+  architect: "AGENT_ARCHITECT_ID",
+  backend: "AGENT_BACKEND_ID",
+  frontend: "AGENT_FRONTEND_ID",
+  integrator: "AGENT_INTEGRATOR_ID",
+  qa: "AGENT_QA_ID",
+  devops: "AGENT_DEVOPS_ID",
 };
 
 // ============= DIAGNOSTIC =============
