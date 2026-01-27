@@ -1,9 +1,10 @@
 import { useState, memo } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, User, Bot } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Message } from '@/types/workspace';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import heftcoderLogo from '@/assets/heftcoder-logo.png';
 
 interface ChatMessageProps {
   message: Message;
@@ -161,15 +162,15 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming }: C
     >
       {/* Avatar */}
       <div className={cn(
-        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
+        "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center overflow-hidden",
         isUser 
           ? "bg-primary text-primary-foreground" 
-          : "bg-gradient-to-br from-violet-500 to-purple-600 text-white"
+          : "bg-transparent"
       )}>
         {isUser ? (
           <User className="h-4 w-4" />
         ) : (
-          <Bot className="h-4 w-4" />
+          <img src={heftcoderLogo} alt="HeftCoder" className="h-8 w-8 object-contain" />
         )}
       </div>
 
