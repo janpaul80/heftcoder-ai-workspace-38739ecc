@@ -29,6 +29,7 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
         </div>
 
         <div className="flex items-center gap-1">
+          <ShareButton projectName="landing-page" />
           <PublishButton projectName="landing-page" />
           
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
