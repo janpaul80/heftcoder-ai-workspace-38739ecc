@@ -16,6 +16,7 @@ interface ChatPanelProps {
   isLoading?: boolean;
   agents?: Record<string, AgentInfo>;
   phase?: OrchestratorPhase;
+  onRegenerate?: () => void;
 }
 
 export function ChatPanel({ 
@@ -25,13 +26,19 @@ export function ChatPanel({
   onSelectProject,
   isLoading, 
   agents = {}, 
-  phase = 'idle' 
+  phase = 'idle',
+  onRegenerate
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  const handleFeedback = (type: 'positive' | 'negative') => {
+    // Could integrate with analytics or feedback system
+    console.log('User feedback:', type);
+  };
 
   // Show start panel when no messages
   if (messages.length === 0) {
@@ -62,8 +69,13 @@ export function ChatPanel({
         {phase !== 'idle' && Object.keys(agents).length > 0 && (
           <AgentProgressBar agents={agents} phase={phase} />
         )}
-        {messages.map((message) => (
-          <ChatMessage key={message.id} message={message} />
+        {messages.map((message, index) => (
+          <ChatMessage 
+            key={message.id} 
+            message={message}
+            onRegenerate={message.role === 'assistant' && index === messages.length - 1 ? onRegenerate : undefined}
+            onFeedback={message.role === 'assistant' ? handleFeedback : undefined}
+          />
         ))}
         <div ref={messagesEndRef} />
       </div>
