@@ -80,7 +80,11 @@ export function GitHubPopover({
               <Button 
                 variant="outline" 
                 className="w-full border-primary text-primary hover:bg-primary/10"
-                onClick={onConfigure}
+                onClick={() => {
+                  onConfigure?.();
+                  // Open GitHub repo settings in new tab
+                  window.open(`https://github.com/${repoName}/settings`, '_blank');
+                }}
               >
                 Configure
               </Button>
