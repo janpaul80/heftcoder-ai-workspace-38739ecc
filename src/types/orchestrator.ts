@@ -32,6 +32,13 @@ export interface ProjectPlan {
   estimatedTime: string;
 }
 
+export interface ClarifyingQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  type: 'text' | 'choice' | 'confirm';
+}
+
 export interface PlanReadyEvent {
   type: "plan_ready";
   plan: ProjectPlan;
@@ -87,6 +94,17 @@ export interface PlanCreatedEvent {
   plan: ProjectPlan;
 }
 
+export interface ClarifyingQuestionsEvent {
+  type: "clarifying_questions";
+  questions: ClarifyingQuestion[];
+}
+
+export interface AgentMessageEvent {
+  type: "agent_message";
+  agent: string;
+  message: string;
+}
+
 export interface ProjectCompleteEvent {
   type: "project_complete";
   files: GeneratedFile[];
@@ -114,6 +132,8 @@ export interface ErrorEvent {
 export type OrchestratorEvent = 
   | PlanReadyEvent 
   | PlanCreatedEvent
+  | ClarifyingQuestionsEvent
+  | AgentMessageEvent
   | AgentStatusEvent 
   | AgentStreamEvent
   | AgentsInitEvent 
@@ -126,4 +146,4 @@ export type OrchestratorEvent =
   | ErrorEvent
   | { type: "[DONE]" };
 
-export type OrchestratorPhase = "idle" | "planning" | "awaiting_approval" | "building" | "complete" | "error";
+export type OrchestratorPhase = "idle" | "planning" | "clarifying" | "awaiting_approval" | "building" | "refining" | "complete" | "error";

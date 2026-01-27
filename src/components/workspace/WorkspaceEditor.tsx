@@ -3,6 +3,8 @@ import { TopNav } from './TopNav';
 import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
+import { PlanApprovalCard } from './PlanApprovalCard';
+import { RefinePanel } from './RefinePanel';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import type { Message, Attachment, ProjectStatus, UserTier, GeneratedProject } from '@/types/workspace';
 import type { Template } from '@/hooks/useTemplates';
@@ -25,8 +27,12 @@ export function WorkspaceEditor() {
     summary,
     streamingOutput,
     generatedProject,
+    agentMessages,
     requestPlan, 
-    approvePlan, 
+    rejectPlan,
+    askQuestion,
+    approvePlan,
+    refineProject,
     reset 
   } = useOrchestrator();
 
@@ -34,9 +40,45 @@ export function WorkspaceEditor() {
   useEffect(() => {
     if (generatedProject && generatedProject.files.length > 0) {
       setProjectStatus({ status: 'complete' });
-      setLoadedProject(null); // Clear loaded project when new one is generated
+      setLoadedProject(null);
     }
   }, [generatedProject]);
+
+  // Show plan approval in messages when ready
+  useEffect(() => {
+    if (phase === "awaiting_approval" && plan) {
+      // Update the last message to show plan is ready
+      setMessages(prev => {
+        const newMessages = [...prev];
+        // Find last assistant message
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant') {
+            newMessages[i] = {
+              ...newMessages[i],
+              content: `## 📋 Build Plan Ready\n\nI've analyzed your request and created a detailed plan. Review it below and approve when ready, or request changes if needed.`,
+            };
+            break;
+          }
+        }
+        return newMessages;
+      });
+      setIsLoading(false);
+    }
+  }, [phase, plan]);
+
+  // Add agent messages to chat
+  useEffect(() => {
+    if (agentMessages.length > 0) {
+      const latestMessage = agentMessages[agentMessages.length - 1];
+      const agentMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: `**${latestMessage.agent}:** ${latestMessage.message}`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, agentMessage]);
+    }
+  }, [agentMessages]);
 
   // Update messages when build completes
   useEffect(() => {
@@ -62,12 +104,12 @@ export function WorkspaceEditor() {
       };
       setMessages(prev => [...prev, errorMessage]);
       setProjectStatus({ status: 'error', message: error });
+      setIsLoading(false);
     }
   }, [phase, error]);
 
   const handleSendMessage = useCallback(
     async (content: string, attachments: Attachment[]) => {
-      // Reset orchestrator for new request
       reset();
       setLoadedProject(null);
       
@@ -83,30 +125,25 @@ export function WorkspaceEditor() {
       setIsLoading(true);
       setProjectStatus({ status: 'working' });
 
-      // Start planning phase
       requestPlan(content);
 
-      // Add planning message
       const planningMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `🤔 **Analyzing your request...**\n\nI'm designing the architecture and creating a build plan. This will just take a moment.`,
+        content: `🤔 **Analyzing your request...**\n\nI'm designing the architecture and creating a detailed build plan. I'll present it for your approval before starting.`,
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, planningMessage]);
-      setIsLoading(false);
     },
     [requestPlan, reset]
   );
 
   const handleSelectTemplate = useCallback((template: Template) => {
-    // Use the template's prompt to generate the project
     handleSendMessage(template.prompt, []);
   }, [handleSendMessage]);
 
   const handleSelectProject = useCallback((project: ProjectHistoryItem) => {
-    // Load the project from history
     const loaded: GeneratedProject = {
       type: project.project_type as 'landing' | 'webapp' | 'native',
       name: project.name,
@@ -117,7 +154,6 @@ export function WorkspaceEditor() {
     setLoadedProject(loaded);
     setProjectStatus({ status: 'complete' });
     
-    // Add a message showing the loaded project
     const loadMessage: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
@@ -128,11 +164,10 @@ export function WorkspaceEditor() {
   }, []);
 
   const handleApprove = useCallback(async () => {
-    // Add approval message
     const approvalMessage: Message = {
       id: crypto.randomUUID(),
       role: 'assistant',
-      content: `🚀 **Building your project...**\n\nThe agent orchestra is generating code. Watch the preview panel to see your project come to life!`,
+      content: `🚀 **Building your project...**\n\nThe agent team is generating your code. Watch the progress bar and preview panel to see your project come to life!`,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, approvalMessage]);
@@ -141,9 +176,70 @@ export function WorkspaceEditor() {
     approvePlan();
   }, [approvePlan]);
 
-  const isActive = phase !== "idle" && phase !== "complete" && phase !== "error";
+  const handleReject = useCallback(async (feedback: string) => {
+    const feedbackMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `**Change request:** ${feedback}`,
+      timestamp: new Date(),
+    };
+    
+    const revisingMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `📝 **Revising the plan...**\n\nI'm updating the build plan based on your feedback.`,
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, feedbackMessage, revisingMessage]);
+    rejectPlan(feedback);
+  }, [rejectPlan]);
+
+  const handleAskQuestion = useCallback(async (question: string) => {
+    const questionMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `**Question:** ${question}`,
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, questionMessage]);
+    askQuestion(question);
+  }, [askQuestion]);
+
+  const handleRefine = useCallback(async (feedback: string) => {
+    const refineMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `**Refinement:** ${feedback}`,
+      timestamp: new Date(),
+    };
+    
+    const workingMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `✨ **Refining your design...**\n\nApplying your changes to the current output.`,
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, refineMessage, workingMessage]);
+    setProjectStatus({ status: 'working' });
+    refineProject(feedback);
+  }, [refineProject]);
+
+  const handleStartOver = useCallback(() => {
+    reset();
+    setMessages([]);
+    setProjectStatus({ status: 'idle' });
+    setLoadedProject(null);
+  }, [reset]);
+
+  const isActive = phase !== "idle" && phase !== "complete" && phase !== "error" && phase !== "awaiting_approval";
+  const isRefining = phase === "building"; // Use building phase for refinements too
   const hasGeneratedFiles = generatedProject && generatedProject.files.length > 0;
   const displayProject = loadedProject || generatedProject;
+  const showApproval = phase === "awaiting_approval" && plan;
+  const showRefine = phase === "complete" && hasGeneratedFiles;
 
   return (
     <div className="h-screen flex flex-col bg-background">
@@ -154,15 +250,42 @@ export function WorkspaceEditor() {
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={25} maxSize={55}>
-          <ChatPanel
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            onSelectTemplate={handleSelectTemplate}
-            onSelectProject={handleSelectProject}
-            isLoading={isLoading}
-            agents={agents}
-            phase={phase}
-          />
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-hidden">
+              <ChatPanel
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                onSelectTemplate={handleSelectTemplate}
+                onSelectProject={handleSelectProject}
+                isLoading={isLoading}
+                agents={agents}
+                phase={phase}
+              />
+            </div>
+            
+            {/* Plan Approval Card */}
+            {showApproval && (
+              <div className="p-4 border-t border-border bg-background/95 backdrop-blur">
+                <PlanApprovalCard
+                  plan={plan}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onAskQuestion={handleAskQuestion}
+                />
+              </div>
+            )}
+
+            {/* Refine Panel */}
+            {showRefine && (
+              <div className="p-4 border-t border-border bg-background/95 backdrop-blur">
+                <RefinePanel
+                  onRefine={handleRefine}
+                  onStartOver={handleStartOver}
+                  isRefining={isRefining}
+                />
+              </div>
+            )}
+          </div>
         </ResizablePanel>
 
         <ResizableHandle className="w-1.5 bg-border hover:bg-primary/50 transition-colors data-[resize-handle-active]:bg-primary" />

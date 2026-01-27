@@ -8,14 +8,12 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-langdock-assistant-v1";
+const BUILD_ID = "orch-v2-competitive";
 
 // ============= LANGDOCK ASSISTANT API CONFIGURATION =============
 
-// Using Langdock Assistant API (NOT the Model API)
 const LANGDOCK_ASSISTANT_API_URL = "https://api.langdock.com/assistant/v1/chat/completions";
 
-// Environment variable names for each agent's assistantId
 const AGENT_ASSISTANT_ENV_VARS: Record<string, string> = {
   architect: "AGENT_ARCHITECT_ID",
   backend: "AGENT_BACKEND_ID",
@@ -25,12 +23,182 @@ const AGENT_ASSISTANT_ENV_VARS: Record<string, string> = {
   devops: "AGENT_DEVOPS_ID",
 };
 
+// ============= COMPETITIVE DESIGN SYSTEM =============
+
+const DESIGN_SYSTEM = `
+## DESIGN EXCELLENCE GUIDELINES
+
+You are competing with Lovable.dev, Bolt.new, and Claude Artifacts. Your output MUST be visually stunning.
+
+### MANDATORY VISUAL ELEMENTS:
+
+1. **HERO SECTIONS:**
+   - Use large, bold typography (text-5xl to text-7xl for headings)
+   - Gradient text effects: bg-gradient-to-r from-X to-Y bg-clip-text text-transparent
+   - Animated backgrounds: subtle floating shapes, gradient orbs, or particles
+   - Clear CTAs with hover effects and shadows
+
+2. **COLOR PALETTE (pick one scheme per project):**
+   - **Dark Mode Premium:** bg-slate-950, text-white, accent purple-500/pink-500
+   - **Light Mode Clean:** bg-white, text-slate-900, accent blue-600/indigo-600  
+   - **Warm Startup:** bg-orange-50, text-slate-800, accent orange-500/amber-500
+   - **Green/Eco:** bg-emerald-50, text-slate-900, accent emerald-500/teal-500
+
+3. **ANIMATIONS (use sparingly but effectively):**
+   - Hover transforms: hover:-translate-y-1 hover:scale-105
+   - Shadows that grow on hover: hover:shadow-xl hover:shadow-purple-500/20
+   - Smooth transitions: transition-all duration-300
+   - Entrance animations via CSS @keyframes
+
+4. **CARDS & CONTAINERS:**
+   - Glassmorphism: bg-white/10 backdrop-blur-lg border border-white/20
+   - Gradient borders: border border-gradient-to-r
+   - Rounded corners: rounded-2xl or rounded-3xl
+   - Generous padding: p-8 to p-12
+
+5. **TYPOGRAPHY:**
+   - Headlines: font-bold tracking-tight
+   - Body: text-gray-600 or text-slate-400 (on dark)
+   - Use font-size hierarchy strictly
+
+6. **IMAGES:**
+   - Use Unsplash: https://images.unsplash.com/photo-XXXXX?w=1200&q=80
+   - Or use gradient placeholders with icons/emojis
+   - Always set loading="lazy" and proper alt text
+
+7. **SECTIONS:**
+   - Hero, Features (3-4 cards), Social Proof/Stats, Pricing (if applicable), CTA, Footer
+   - Use py-20 to py-32 for vertical rhythm
+   - max-w-7xl mx-auto for content width
+
+8. **MOBILE FIRST:**
+   - All layouts must be responsive
+   - Use grid md:grid-cols-2 lg:grid-cols-3
+   - Stack on mobile, expand on desktop
+
+### CODE OUTPUT FORMAT:
+Always wrap your HTML in proper fenced code blocks:
+\`\`\`html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Project Name</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Add custom styles here -->
+</head>
+<body>
+  <!-- Your stunning design here -->
+</body>
+</html>
+\`\`\`
+`;
+
+// ============= AGENT PROMPTS - COMPETITIVE QUALITY =============
+
+const AGENT_PROMPTS = {
+  architect: `You are a world-class product architect. Your job is to analyze user requests and create actionable build plans.
+
+## YOUR RESPONSIBILITIES:
+1. Understand the user's INTENT, not just their words
+2. Design a professional project structure
+3. Create a clear, step-by-step execution plan
+4. Identify what makes this project SPECIAL and unique
+
+## OUTPUT FORMAT:
+First, output a JSON plan in this exact format:
+\`\`\`json
+{
+  "projectName": "Compelling name for the project",
+  "projectType": "landing" | "webapp" | "native",
+  "description": "2-3 sentence description of what we're building and WHY it's valuable",
+  "techStack": {
+    "frontend": ["HTML", "Tailwind CSS", "JavaScript"],
+    "backend": ["None"],
+    "database": "None"
+  },
+  "designDirection": "Brief description of the visual style (e.g., 'Dark mode premium with purple/pink gradients, glassmorphism effects, bold typography')",
+  "keyFeatures": ["Feature 1", "Feature 2", "Feature 3"],
+  "steps": [
+    {"id": "1", "agent": "frontend", "task": "Build hero section with animated gradient background", "dependencies": []},
+    {"id": "2", "agent": "frontend", "task": "Create feature cards with hover effects", "dependencies": ["1"]}
+  ],
+  "estimatedTime": "3-5 minutes"
+}
+\`\`\`
+
+Then trigger the next phase:
+TOOL_CALL: handoff_to_frontend({"plan_json": <your plan>})`,
+
+  frontend: `You are an elite frontend developer competing with Lovable.dev, Bolt.new, and Claude Artifacts.
+
+${DESIGN_SYSTEM}
+
+## YOUR MISSION:
+Create STUNNING, production-ready code that makes users say "wow!"
+
+## REQUIREMENTS:
+1. COMPLETE HTML with all sections fully implemented
+2. Modern Tailwind CSS (use the CDN)
+3. Smooth animations and transitions
+4. Mobile-responsive design
+5. NO placeholders or "TODO" comments
+6. ALL images must use real Unsplash URLs or CSS gradients
+
+## AFTER GENERATING CODE:
+TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`,
+
+  backend: `You are a senior backend engineer. Create clean, secure API endpoints.
+
+## OUTPUT:
+- Supabase Edge Functions in TypeScript
+- PostgreSQL schemas with proper RLS
+- Clear API documentation
+
+TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`,
+
+  integrator: `You are an integration specialist. Connect frontend to backend seamlessly.
+
+## REQUIREMENTS:
+1. Proper error handling
+2. Loading states
+3. Type safety
+4. Clean async/await patterns
+
+TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`,
+
+  qa: `You are a meticulous QA engineer. Review code for quality.
+
+## CHECK FOR:
+1. Visual bugs or layout issues
+2. Mobile responsiveness
+3. Accessibility issues
+4. Code quality and best practices
+5. Performance issues
+
+## OUTPUT:
+Provide a brief verdict:
+- APPROVED: Code is production-ready
+- NEEDS_FIXES: List specific issues
+
+TOOL_CALL: handoff_to_devops({"qa_report": {...}})`,
+
+  devops: `You are a DevOps engineer. Prepare for deployment.
+
+## CONFIRM:
+1. All files are complete
+2. No security issues
+3. Ready for production
+
+TOOL_CALL: complete_project({"deployment_ready": true})`,
+};
+
 // ============= DIAGNOSTIC =============
 
 function handleDiagnostic(): Response {
   const envObj = Deno.env.toObject();
   
-  // Check which assistant IDs are configured
   const assistantStatus: Record<string, boolean> = {};
   for (const [agent, envVar] of Object.entries(AGENT_ASSISTANT_ENV_VARS)) {
     assistantStatus[agent] = Boolean(envObj[envVar] && envObj[envVar].length > 0);
@@ -68,6 +236,8 @@ interface ProjectPlan {
   projectName: string;
   projectType: ProjectType;
   description: string;
+  designDirection?: string;
+  keyFeatures?: string[];
   techStack: {
     frontend: string[];
     backend: string[];
@@ -112,111 +282,43 @@ interface OrchestrationState {
   }>;
 }
 
-// ============= AGENT CONFIGURATION =============
+// ============= AGENT METADATA =============
 
-// Agent metadata (no model specified - each agent uses its own Langdock Assistant)
 const AGENTS = {
   architect: {
     name: "Planner",
     role: "System design and project structure",
     nextHandoff: "handoff_to_frontend",
-    systemPrompt: `You are a project planner for a code generation system. Analyze the user's request and create a project plan.
-
-IMPORTANT: After creating the plan, you MUST indicate a handoff by including this at the end of your response:
-TOOL_CALL: handoff_to_frontend({"plan_json": <your plan object>})
-
-For landing pages: handoff_to_frontend
-For web apps with backend: handoff_to_backend first
-
-Output a JSON plan first, then the handoff.
-
-Plan format:
-{
-  "projectName": "string",
-  "projectType": "landing" | "webapp" | "native",
-  "description": "Brief description",
-  "techStack": {
-    "frontend": ["HTML", "CSS", "JavaScript"],
-    "backend": ["None"],
-    "database": "None"
-  },
-  "steps": [
-    {"id": "1", "agent": "frontend", "task": "Create structure", "dependencies": []}
-  ],
-  "estimatedTime": "X minutes"
-}`
   },
   backend: {
     name: "Backend",
     role: "API and database implementation",
     nextHandoff: "handoff_to_frontend",
-    systemPrompt: `You are a backend developer. Create APIs and database schemas.
-
-After generating code, include:
-TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`
   },
   frontend: {
     name: "Frontend",
     role: "UI components and styling",
     nextHandoff: "handoff_to_qa",
-    systemPrompt: `You are a frontend developer. Generate complete, working code.
-
-RULES:
-1. Generate complete, runnable code - no placeholders
-2. Use modern best practices and Tailwind CSS
-3. Make it visually stunning and responsive
-4. Output code blocks with language tags
-
-For landing pages:
-- Complete HTML with Tailwind CDN
-- Modern, professional design
-- Mobile-responsive layout
-- Beautiful gradients and shadows
-- Smooth animations
-
-Format your code like:
-\`\`\`html
-<!DOCTYPE html>
-<html>
-...complete code...
-</html>
-\`\`\`
-
-After generating code, include:
-TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`
   },
   integrator: {
     name: "Integrator",
     role: "Connect frontend to backend",
     nextHandoff: "handoff_to_qa",
-    systemPrompt: `You are an integration specialist. Connect frontend to backend APIs.
-
-After integration, include:
-TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`
   },
   qa: {
     name: "QA",
     role: "Testing and quality assurance",
     nextHandoff: "handoff_to_devops",
-    systemPrompt: `You are a QA engineer. Review code for bugs and improvements.
-
-After review, include:
-TOOL_CALL: handoff_to_devops({"project_artifacts": {...}})`
   },
   devops: {
     name: "DevOps",
     role: "Deployment and infrastructure",
     nextHandoff: "complete_project",
-    systemPrompt: `You are a DevOps engineer. Prepare for deployment.
-
-When ready, include:
-TOOL_CALL: complete_project({"final_output": {...}})`
   },
 };
 
-// ============= LANGDOCK ASSISTANT API CALL =============
+// ============= LANGDOCK API CALL =============
 
-// Retry helper with exponential backoff
 async function fetchWithRetry(
   url: string, 
   options: RequestInit, 
@@ -228,7 +330,7 @@ async function fetchWithRetry(
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
       
       const response = await fetch(url, { 
         ...options, 
@@ -262,7 +364,6 @@ async function callLangdockAssistant(
   message: string,
   additionalContext?: string
 ): Promise<{ content: string; toolCalls: ToolCall[] }> {
-  // Normalize the API key to avoid common misconfiguration issues
   const apiKeyRaw = Deno.env.get("LANGDOCK_API_KEY");
   const apiKey = apiKeyRaw?.trim().replace(/^Bearer\s+/i, "");
   
@@ -270,12 +371,6 @@ async function callLangdockAssistant(
     throw new Error(`LANGDOCK_API_KEY is not configured (build: ${BUILD_ID})`);
   }
 
-  const agent = AGENTS[agentKey as keyof typeof AGENTS];
-  if (!agent) {
-    throw new Error(`Unknown agent: ${agentKey}`);
-  }
-
-  // Get the assistantId for this agent from environment variables
   const envVarName = AGENT_ASSISTANT_ENV_VARS[agentKey];
   if (!envVarName) {
     throw new Error(`No environment variable mapping for agent: ${agentKey}`);
@@ -286,9 +381,9 @@ async function callLangdockAssistant(
     throw new Error(`${envVarName} is not configured for agent: ${agentKey} (build: ${BUILD_ID})`);
   }
 
-  // Build the full message with system prompt context
-  const systemPrompt = agent.systemPrompt + (additionalContext ? `\n\nContext:\n${additionalContext}` : "");
-  const fullMessage = `${systemPrompt}\n\n---\n\nUser Request:\n${message}`;
+  // Get the competitive prompt for this agent
+  const agentPrompt = AGENT_PROMPTS[agentKey as keyof typeof AGENT_PROMPTS] || "";
+  const fullMessage = `${agentPrompt}\n\n---\n\nUser Request:\n${message}${additionalContext ? `\n\nAdditional Context:\n${additionalContext}` : ""}`;
 
   console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
   
@@ -328,23 +423,12 @@ async function callLangdockAssistant(
   const data = await response.json();
   console.log(`[Langdock] Raw response keys:`, Object.keys(data));
   
-  // Debug: log the full structure for troubleshooting empty responses
-  console.log(`[Langdock] Full response structure:`, JSON.stringify(data, null, 2).slice(0, 1500));
-  
-  // Langdock Assistant API returns: { result: [{ role: "assistant", content: [{ type: "text"|"reasoning", text: "..." }] }] }
   let content = "";
   
   if (data.result && Array.isArray(data.result)) {
-    // Langdock Assistant API format
     const assistantMessage = data.result.find((m: { role: string }) => m.role === "assistant");
-    console.log(`[Langdock] Assistant message found:`, !!assistantMessage);
-    console.log(`[Langdock] Assistant content type:`, typeof assistantMessage?.content);
-    console.log(`[Langdock] Assistant content isArray:`, Array.isArray(assistantMessage?.content));
     
     if (assistantMessage?.content && Array.isArray(assistantMessage.content)) {
-      console.log(`[Langdock] Content blocks count:`, assistantMessage.content.length);
-      
-      // Prefer "text" type blocks for clean output
       const textBlocks = assistantMessage.content
         .filter((block: { type: string; text?: string }) => block.type === "text" && block.text)
         .map((block: { text: string }) => block.text);
@@ -352,25 +436,20 @@ async function callLangdockAssistant(
       if (textBlocks.length > 0) {
         content = textBlocks.join("\n");
       } else {
-        // Fallback: use all blocks with text (including reasoning) for tool detection and code extraction
         content = assistantMessage.content
           .filter((block: { text?: string }) => block.text)
           .map((block: { text: string }) => block.text)
           .join("\n");
       }
     } else if (typeof assistantMessage?.content === "string") {
-      // Handle case where content is a string directly
       content = assistantMessage.content;
     }
   } else if (data.choices?.[0]?.message?.content) {
-    // OpenAI-compatible format fallback
     content = data.choices[0].message.content;
   }
   
   console.log(`[Langdock] Extracted content length: ${content.length}`);
-  console.log(`[Langdock] Content preview:`, content.slice(0, 300));
   
-  // Detect tool calls from content
   const toolCalls = detectToolCalls(content);
   console.log(`[Langdock] Tool calls detected: ${toolCalls.length}`);
 
@@ -382,7 +461,6 @@ async function callLangdockAssistant(
 function detectToolCalls(content: string): ToolCall[] {
   const detectedCalls: ToolCall[] = [];
 
-  // Strategy 1: Explicit TOOL_CALL syntax
   const explicitPattern = /TOOL_CALL:\s*(\w+)\s*\(\s*(\{[\s\S]*?\})\s*\)/g;
   let match;
   
@@ -392,12 +470,11 @@ function detectToolCalls(content: string): ToolCall[] {
       const parameters = JSON.parse(paramsJson);
       detectedCalls.push({ name: functionName, parameters });
       console.log(`[Tool Detection] Found: ${functionName}`);
-    } catch (e) {
+    } catch {
       console.log(`[Tool Detection] Parse failed for ${functionName}`);
     }
   }
 
-  // Strategy 2: Keyword fallback
   if (detectedCalls.length === 0) {
     const handoffPatterns = [
       { pattern: /\b(handoff|delegate|pass)\s+to\s+backend\b/i, tool: "handoff_to_backend" },
@@ -431,8 +508,8 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
     const language = match[1] || "text";
     const code = match[2].trim();
     
-    // Skip empty code blocks
-    if (!code || code.length < 10) continue;
+    if (!code || code.length < 50) continue;
+    if (language === "json") continue; // Skip JSON blocks (plans)
     
     let filename = "code";
     if (language === "html") filename = "index.html";
@@ -451,6 +528,17 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
 }
 
 function extractPlan(content: string): ProjectPlan | null {
+  // Look for JSON in code blocks first
+  const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    try {
+      return JSON.parse(jsonBlockMatch[1].trim());
+    } catch {
+      // Fall through to other methods
+    }
+  }
+  
+  // Look for raw JSON with projectName
   const jsonMatch = content.match(/\{[\s\S]*?"projectName"[\s\S]*?\}/);
   if (!jsonMatch) return null;
   
@@ -461,10 +549,9 @@ function extractPlan(content: string): ProjectPlan | null {
   }
 }
 
-// ============= FALLBACK HTML GENERATOR =============
+// ============= STUNNING FALLBACK HTML =============
 
 function generateFallbackHtml(projectName: string, description: string): string {
-  // Generate a professional fallback landing page when the LLM returns no code
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -472,94 +559,193 @@ function generateFallbackHtml(projectName: string, description: string): string 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(projectName)}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          animation: {
+            'float': 'float 6s ease-in-out infinite',
+            'glow': 'glow 2s ease-in-out infinite alternate',
+          }
+        }
+      }
+    }
+  </script>
   <style>
     @keyframes float {
-      0%, 100% { transform: translateY(0px); }
-      50% { transform: translateY(-20px); }
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-20px) rotate(2deg); }
     }
-    .float { animation: float 3s ease-in-out infinite; }
+    @keyframes glow {
+      from { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+      to { box-shadow: 0 0 40px rgba(168, 85, 247, 0.8); }
+    }
+    .glass { background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); }
+    .gradient-text { background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #f97316 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
-  <!-- Hero Section -->
-  <header class="relative overflow-hidden">
-    <div class="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%239C92AC\" fill-opacity=\"0.08\"%3E%3Cpath d=\"m36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-20"></div>
-    <nav class="relative z-10 flex items-center justify-between px-8 py-6 max-w-7xl mx-auto">
-      <div class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        ${escapeHtml(projectName)}
-      </div>
-      <div class="flex gap-6">
-        <a href="#features" class="hover:text-purple-400 transition">Features</a>
-        <a href="#about" class="hover:text-purple-400 transition">About</a>
-        <a href="#contact" class="hover:text-purple-400 transition">Contact</a>
-      </div>
-    </nav>
-    
-    <div class="relative z-10 max-w-4xl mx-auto px-8 py-32 text-center">
-      <div class="float mb-8">
-        <div class="w-24 h-24 mx-auto rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-4xl shadow-2xl shadow-purple-500/30">
-          ✨
-        </div>
-      </div>
-      <h1 class="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-purple-400 bg-clip-text text-transparent">
-        ${escapeHtml(projectName)}
-      </h1>
-      <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
-        ${escapeHtml(description)}
-      </p>
-      <div class="flex gap-4 justify-center">
-        <button class="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-1 transition-all">
+<body class="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-slate-950 text-white overflow-x-hidden">
+  <!-- Animated Background -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none">
+    <div class="absolute top-20 left-20 w-72 h-72 bg-purple-500/30 rounded-full blur-3xl animate-float"></div>
+    <div class="absolute bottom-20 right-20 w-96 h-96 bg-pink-500/20 rounded-full blur-3xl animate-float" style="animation-delay: -3s;"></div>
+    <div class="absolute top-1/2 left-1/2 w-64 h-64 bg-orange-500/20 rounded-full blur-3xl animate-float" style="animation-delay: -1.5s;"></div>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="relative z-50 border-b border-white/10">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="text-2xl font-bold gradient-text">${escapeHtml(projectName)}</div>
+      <div class="hidden md:flex items-center gap-8">
+        <a href="#features" class="text-gray-300 hover:text-white transition">Features</a>
+        <a href="#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
+        <a href="#contact" class="text-gray-300 hover:text-white transition">Contact</a>
+        <button class="px-6 py-2 bg-gradient-to-r from-purple-600 to-pink-600 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 hover:-translate-y-0.5 transition-all">
           Get Started
-        </button>
-        <button class="px-8 py-4 border border-purple-400/50 rounded-full font-semibold hover:bg-purple-400/10 transition-all">
-          Learn More
         </button>
       </div>
     </div>
-  </header>
+  </nav>
+
+  <!-- Hero Section -->
+  <section class="relative z-10 min-h-[90vh] flex items-center">
+    <div class="max-w-7xl mx-auto px-6 py-24 grid lg:grid-cols-2 gap-12 items-center">
+      <div>
+        <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/20 border border-purple-500/30 text-sm text-purple-300 mb-6">
+          <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+          Now available worldwide
+        </div>
+        <h1 class="text-5xl md:text-7xl font-bold leading-tight mb-6">
+          <span class="gradient-text">${escapeHtml(projectName)}</span>
+        </h1>
+        <p class="text-xl text-gray-400 mb-8 leading-relaxed">
+          ${escapeHtml(description)}
+        </p>
+        <div class="flex flex-wrap gap-4">
+          <button class="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl font-semibold text-lg hover:shadow-xl hover:shadow-purple-500/30 hover:-translate-y-1 transition-all">
+            Start Free Trial
+          </button>
+          <button class="px-8 py-4 glass border border-white/20 rounded-2xl font-semibold text-lg hover:bg-white/10 transition-all">
+            Watch Demo →
+          </button>
+        </div>
+        <div class="flex items-center gap-8 mt-12 text-sm text-gray-400">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            Free 14-day trial
+          </div>
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+            No credit card required
+          </div>
+        </div>
+      </div>
+      <div class="relative">
+        <div class="glass rounded-3xl border border-white/20 p-8 animate-glow">
+          <div class="aspect-video bg-gradient-to-br from-purple-900/50 to-pink-900/50 rounded-2xl flex items-center justify-center">
+            <div class="text-6xl">✨</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stats Section -->
+  <section class="relative z-10 py-20 border-y border-white/10">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+        <div class="text-center">
+          <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">10K+</div>
+          <div class="text-gray-400">Active Users</div>
+        </div>
+        <div class="text-center">
+          <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">99.9%</div>
+          <div class="text-gray-400">Uptime</div>
+        </div>
+        <div class="text-center">
+          <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">50M+</div>
+          <div class="text-gray-400">API Calls</div>
+        </div>
+        <div class="text-center">
+          <div class="text-4xl md:text-5xl font-bold gradient-text mb-2">4.9★</div>
+          <div class="text-gray-400">User Rating</div>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <!-- Features Section -->
-  <section id="features" class="py-24 px-8">
-    <div class="max-w-6xl mx-auto">
-      <h2 class="text-4xl font-bold text-center mb-16">Features</h2>
-      <div class="grid md:grid-cols-3 gap-8">
-        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
-          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">⚡</div>
-          <h3 class="text-xl font-semibold mb-2">Lightning Fast</h3>
-          <p class="text-gray-400">Built for speed and performance with modern technologies.</p>
+  <section id="features" class="relative z-10 py-32">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="text-center mb-16">
+        <h2 class="text-4xl md:text-5xl font-bold mb-4">Powerful Features</h2>
+        <p class="text-xl text-gray-400 max-w-2xl mx-auto">Everything you need to build amazing products, all in one place.</p>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">⚡</div>
+          <h3 class="text-xl font-semibold mb-3">Lightning Fast</h3>
+          <p class="text-gray-400">Built for speed with optimized performance at every level.</p>
         </div>
-        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
-          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">🎨</div>
-          <h3 class="text-xl font-semibold mb-2">Beautiful Design</h3>
-          <p class="text-gray-400">Stunning visuals that capture attention and delight users.</p>
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">🔒</div>
+          <h3 class="text-xl font-semibold mb-3">Enterprise Security</h3>
+          <p class="text-gray-400">Bank-grade encryption and security protocols to protect your data.</p>
         </div>
-        <div class="p-8 rounded-2xl bg-white/5 border border-white/10 hover:border-purple-400/50 transition-all">
-          <div class="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">🔒</div>
-          <h3 class="text-xl font-semibold mb-2">Secure</h3>
-          <p class="text-gray-400">Enterprise-grade security to protect your data.</p>
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">🎨</div>
+          <h3 class="text-xl font-semibold mb-3">Beautiful Design</h3>
+          <p class="text-gray-400">Stunning interfaces that users love and remember.</p>
+        </div>
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">🌍</div>
+          <h3 class="text-xl font-semibold mb-3">Global Scale</h3>
+          <p class="text-gray-400">Deploy worldwide with our global infrastructure.</p>
+        </div>
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500 to-red-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">💬</div>
+          <h3 class="text-xl font-semibold mb-3">24/7 Support</h3>
+          <p class="text-gray-400">Expert help whenever you need it, day or night.</p>
+        </div>
+        <div class="glass p-8 rounded-3xl border border-white/10 hover:border-purple-500/50 hover:-translate-y-2 transition-all group">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center text-2xl mb-6 group-hover:scale-110 transition-transform">🔌</div>
+          <h3 class="text-xl font-semibold mb-3">Easy Integration</h3>
+          <p class="text-gray-400">Connect with your favorite tools in minutes.</p>
         </div>
       </div>
     </div>
   </section>
 
   <!-- CTA Section -->
-  <section class="py-24 px-8">
-    <div class="max-w-4xl mx-auto text-center p-12 rounded-3xl bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-400/30">
-      <h2 class="text-4xl font-bold mb-4">Ready to get started?</h2>
-      <p class="text-xl text-gray-300 mb-8">Join thousands of satisfied users today.</p>
-      <button class="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full font-semibold hover:shadow-lg hover:shadow-purple-500/30 transform hover:-translate-y-1 transition-all">
-        Start Free Trial
-      </button>
+  <section class="relative z-10 py-32">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="glass rounded-3xl border border-white/20 p-12 md:p-16 text-center relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-pink-600/20"></div>
+        <div class="relative z-10">
+          <h2 class="text-4xl md:text-5xl font-bold mb-6">Ready to get started?</h2>
+          <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+            Join thousands of satisfied users and transform your workflow today.
+          </p>
+          <button class="px-10 py-5 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl font-semibold text-lg hover:shadow-xl hover:shadow-purple-500/30 hover:-translate-y-1 transition-all">
+            Start Your Free Trial →
+          </button>
+        </div>
+      </div>
     </div>
   </section>
 
   <!-- Footer -->
-  <footer class="py-12 px-8 border-t border-white/10">
-    <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-      <div class="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-        ${escapeHtml(projectName)}
+  <footer class="relative z-10 border-t border-white/10 py-12">
+    <div class="max-w-7xl mx-auto px-6">
+      <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+        <div class="text-2xl font-bold gradient-text">${escapeHtml(projectName)}</div>
+        <div class="flex gap-6 text-gray-400">
+          <a href="#" class="hover:text-white transition">Privacy</a>
+          <a href="#" class="hover:text-white transition">Terms</a>
+          <a href="#" class="hover:text-white transition">Contact</a>
+        </div>
+        <div class="text-gray-500">© 2025 ${escapeHtml(projectName)}. All rights reserved.</div>
       </div>
-      <p class="text-gray-500">© 2025 ${escapeHtml(projectName)}. All rights reserved.</p>
     </div>
   </footer>
 </body>
@@ -696,116 +882,69 @@ class OrchestrationEngine {
     }
 
     try {
-      // Build a clear, actionable message for the agent
       let message = "";
       
       if (agentKey === "frontend") {
-        // Frontend needs explicit instructions to generate code
-        message = `Generate complete, working HTML code for this project.
+        // Build comprehensive frontend request
+        const plan = this.state.plan;
+        message = `Create a stunning, production-ready ${plan?.projectType || 'landing'} page.
 
-PROJECT REQUIREMENTS:
-${this.state.plan ? `Name: ${this.state.plan.projectName}
-Type: ${this.state.plan.projectType}
-Description: ${this.state.plan.description}` : 'See context below'}
+PROJECT: ${plan?.projectName || 'Web Project'}
+DESCRIPTION: ${plan?.description || originalRequest || 'A beautiful modern website'}
+DESIGN DIRECTION: ${plan?.designDirection || 'Dark mode premium with purple/pink gradients and glassmorphism'}
+KEY FEATURES: ${plan?.keyFeatures?.join(', ') || 'Hero section, Features, CTA, Footer'}
 
-Original User Request: ${originalRequest || this.originalRequest || 'Build the requested project'}
+Original User Request: ${originalRequest || this.originalRequest}
 
-IMPORTANT: You MUST output complete HTML code in a code block like:
-\`\`\`html
-<!DOCTYPE html>
-<html>
-...full working code...
-</html>
-\`\`\`
-
-Make it visually stunning with Tailwind CSS (include CDN). Include all sections, images, and interactivity.`;
+CRITICAL: Output complete HTML code in a \`\`\`html code block. Make it STUNNING!`;
       } else if (agentKey === "qa") {
-        // QA needs the actual generated files to review
         const generatedCode = this.state.files.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
-        message = `Review this generated code for quality and bugs:
-
-${generatedCode || 'No code files generated yet.'}
-
-If the code looks good, approve it. If there are issues, list them.`;
+        message = `Review this generated code:\n\n${generatedCode || 'No code yet.'}\n\nProvide brief verdict.`;
       } else if (agentKey === "devops") {
-        message = `Prepare deployment for this project:
-${this.state.plan ? JSON.stringify(this.state.plan, null, 2) : 'See context'}
-
-Files generated: ${this.state.files.length}
-
-Confirm deployment readiness.`;
+        message = `Confirm deployment readiness for: ${this.state.plan?.projectName}. Files: ${this.state.files.length}`;
       } else {
-        const contextStr = JSON.stringify(context, null, 2);
         message = this.state.plan 
-          ? `Build this project:\n${JSON.stringify(this.state.plan, null, 2)}\n\nContext:\n${contextStr}`
-          : `Process this request with context:\n${contextStr}`;
+          ? `Build: ${JSON.stringify(this.state.plan, null, 2)}`
+          : `Process: ${JSON.stringify(context, null, 2)}`;
       }
 
-      // Call Langdock via chat completions API
       const { content, toolCalls } = await callLangdockAssistant(agentKey, message);
 
-      // Extract code (only some agents are expected to generate code blocks)
+      // Extract code
       const expectsCode = ["frontend", "backend", "integrator"].includes(agentKey);
       let files = extractCodeBlocks(content);
 
-      // If the frontend agent returns no code, generate a fallback HTML template
-      // This ensures users always get something rendered rather than an error
+      // Fallback for frontend
       if (agentKey === "frontend" && files.length === 0) {
-        console.log(`[Orchestration] Frontend returned no code, generating fallback template...`);
-        
-        const projectName = this.state.plan?.projectName || "Generated Project";
-        const description = this.state.plan?.description || this.originalRequest || "A beautiful landing page";
-        
-        const fallbackHtml = generateFallbackHtml(projectName, description);
-        files = [{
-          filename: "index.html",
-          path: "index.html",
-          content: fallbackHtml,
-          language: "html",
-        }];
-        
-        console.log(`[Orchestration] Fallback HTML generated (${fallbackHtml.length} chars)`);
+        console.log(`[Orchestration] Frontend returned no code, using stunning fallback...`);
+        const fallbackHtml = generateFallbackHtml(
+          this.state.plan?.projectName || "Generated Project",
+          this.state.plan?.description || this.originalRequest || "A beautiful landing page"
+        );
+        files = [{ filename: "index.html", path: "index.html", content: fallbackHtml, language: "html" }];
       }
 
-      // For other code-producing agents, still fail fast if no code
       if (expectsCode && agentKey !== "frontend" && files.length === 0) {
-        const preview = content
-          ? content.slice(0, 600)
-          : "(empty response)";
-        throw new Error(
-          `No code was generated by the ${agentKey} agent. ` +
-          `I didn't find any fenced code blocks (triple-backtick code fences like: three backticks + "html"). ` +
-          `Please retry. If it keeps happening, the agent may be returning instructions instead of code. ` +
-          `\n\nAgent response preview:\n${preview}`
-        );
+        throw new Error(`No code generated by ${agentKey} agent.`);
       }
+
       if (files.length > 0) {
         this.state.files.push(...files);
         
-        // Send generated files
         for (const file of files) {
-          this.send({
-            type: "file_generated",
-            agent: agentKey,
-            file,
-          });
+          this.send({ type: "file_generated", agent: agentKey, file });
         }
 
-        // Build preview for HTML
         const htmlFile = files.find(f => f.language === "html");
         if (htmlFile) {
-          this.send({
-            type: "preview_ready",
-            html: htmlFile.content,
-          });
+          this.send({ type: "preview_ready", html: htmlFile.content });
         }
       }
 
-      // Update agent status
+      // Update status
       if (this.agentTasks[agentKey]) {
         this.agentTasks[agentKey].status = "complete";
         this.agentTasks[agentKey].statusLabel = "Done";
-        this.agentTasks[agentKey].output = content.slice(0, 500);
       }
 
       this.send({
@@ -816,20 +955,12 @@ Confirm deployment readiness.`;
         progress: this.getProgress(),
       });
 
-      this.send({
-        type: "agent_output",
-        agent: agentKey,
-        output: content,
-        filesGenerated: files.length,
-      });
-
-      // Handle tool calls or auto-advance
+      // Handle tool calls
       if (toolCalls.length > 0) {
         for (const tc of toolCalls) {
           await this.handleToolCall(tc.name, tc.parameters);
         }
       } else {
-        // Auto-advance if no explicit handoff
         await this.autoHandoff(agentKey, context);
       }
 
@@ -838,15 +969,7 @@ Confirm deployment readiness.`;
       
       if (this.agentTasks[agentKey]) {
         this.agentTasks[agentKey].status = "error";
-        this.agentTasks[agentKey].statusLabel = err instanceof Error ? err.message : "Error";
       }
-
-      this.send({
-        type: "agent_status",
-        agent: agentKey,
-        status: "error",
-        statusLabel: err instanceof Error ? err.message : "Error",
-      });
 
       this.send({
         type: "error",
@@ -859,28 +982,22 @@ Confirm deployment readiness.`;
   private async autoHandoff(agentKey: string, context: Record<string, unknown>) {
     const agent = AGENTS[agentKey as keyof typeof AGENTS];
     if (!agent?.nextHandoff) {
-      console.log(`[Orchestration] No next handoff for ${agentKey}, completing`);
       await this.completeProject(context);
       return;
     }
-
-    console.log(`[Orchestration] Auto-handoff: ${agent.nextHandoff}`);
     await this.handleToolCall(agent.nextHandoff, context);
   }
 
-  private async completeProject(context: Record<string, unknown>) {
+  private async completeProject(_context: Record<string, unknown>) {
     this.state.phase = "complete";
     this.log("system", "Project complete!");
 
-    // Mark all agents complete
     for (const key of Object.keys(this.agentTasks)) {
       if (this.agentTasks[key].status !== "error") {
         this.agentTasks[key].status = "complete";
-        this.agentTasks[key].statusLabel = "Done";
       }
     }
 
-    // Send project_complete with all files
     this.send({
       type: "project_complete",
       files: this.state.files,
@@ -888,27 +1005,19 @@ Confirm deployment readiness.`;
       progress: 100,
     });
 
-    // Send agents update
-    this.send({
-      type: "agents_update",
-      agents: this.agentTasks,
-    });
-
-    // Send final complete event that the frontend expects
     this.send({
       type: "complete",
       agents: this.agentTasks,
-      summary: `✅ Project "${this.state.plan?.projectName || 'Untitled'}" has been generated successfully! ${this.state.files.length} files created.`,
+      summary: `✅ **${this.state.plan?.projectName || 'Project'}** is ready!\n\n${this.state.files.length} files generated. Use the refine panel below to make adjustments.`,
     });
   }
 
   async startPlanning(message: string) {
-    this.originalRequest = message; // Store for later agents
+    this.originalRequest = message;
     this.state.phase = "planning";
     this.state.currentAgent = "architect";
     this.log("architect", "Starting planning...");
 
-    // Initialize architect
     this.agentTasks["architect"] = {
       agentId: "architect",
       agentName: AGENTS.architect.name,
@@ -917,11 +1026,7 @@ Confirm deployment readiness.`;
       statusLabel: "Analyzing requirements...",
     };
 
-    this.send({
-      type: "agents_init",
-      agents: this.agentTasks,
-    });
-
+    this.send({ type: "agents_init", agents: this.agentTasks });
     this.send({
       type: "agent_status",
       agent: "architect",
@@ -930,25 +1035,17 @@ Confirm deployment readiness.`;
     });
 
     try {
-      // Call Langdock architect via Assistant API
       const { content, toolCalls } = await callLangdockAssistant("architect", message);
 
-      // Extract plan
       const plan = extractPlan(content);
       if (plan) {
         this.state.plan = plan;
         this.initAgentsFromPlan(plan);
-
-        this.send({
-          type: "plan_created",
-          plan,
-        });
+        this.send({ type: "plan_created", plan });
       }
 
-      // Update architect status
       this.agentTasks["architect"].status = "complete";
       this.agentTasks["architect"].statusLabel = "Plan ready";
-      this.agentTasks["architect"].output = content.slice(0, 500);
 
       this.send({
         type: "agent_status",
@@ -957,38 +1054,11 @@ Confirm deployment readiness.`;
         statusLabel: "Plan ready",
       });
 
-      this.send({
-        type: "agent_output",
-        agent: "architect",
-        output: content,
-      });
-
-      // Handle tool calls
-      if (toolCalls.length > 0) {
-        for (const tc of toolCalls) {
-          await this.handleToolCall(tc.name, tc.parameters);
-        }
-      } else if (plan) {
-        // Auto-handoff based on plan
-        const hasBackend = plan.steps.some(s => s.agent === "backend");
-        if (hasBackend) {
-          await this.handleToolCall("handoff_to_backend", { plan_json: plan, message });
-        } else {
-          await this.handleToolCall("handoff_to_frontend", { plan_json: plan, message });
-        }
-      }
-
+      // IMPORTANT: Don't auto-handoff - wait for user approval
+      // The frontend will show the plan and wait for approval
+      
     } catch (err) {
       console.error("[Orchestration] Planning error:", err);
-      
-      this.send({
-        type: "agent_status",
-        agent: "architect",
-        status: "error",
-        statusLabel: err instanceof Error ? err.message : "Planning failed",
-        build: BUILD_ID,
-      });
-      
       this.send({
         type: "error",
         message: err instanceof Error ? err.message : "Planning failed",
@@ -998,6 +1068,7 @@ Confirm deployment readiness.`;
   }
 
   async startExecution(message: string, plan: ProjectPlan) {
+    this.originalRequest = message;
     this.state.plan = plan;
     this.state.phase = "building_frontend";
     this.initAgentsFromPlan(plan);
@@ -1012,17 +1083,104 @@ Confirm deployment readiness.`;
       await this.handleToolCall("handoff_to_frontend", { plan_json: plan, message });
     }
   }
+
+  async handleRefine(feedback: string, currentCode: string, plan: ProjectPlan) {
+    this.originalRequest = feedback;
+    this.state.plan = plan;
+    this.state.files = [];
+    
+    this.agentTasks["frontend"] = {
+      agentId: "frontend",
+      agentName: AGENTS.frontend.name,
+      role: "Refining design",
+      status: "thinking",
+      statusLabel: "Applying changes...",
+    };
+
+    this.send({ type: "agents_init", agents: this.agentTasks });
+
+    const refineMessage = `Refine this existing code based on user feedback.
+
+CURRENT CODE:
+${currentCode}
+
+USER FEEDBACK:
+${feedback}
+
+ORIGINAL PROJECT:
+${plan.projectName} - ${plan.description}
+
+Update the code to incorporate the feedback while keeping the overall structure. Output complete HTML.`;
+
+    try {
+      const { content } = await callLangdockAssistant("frontend", refineMessage);
+      
+      let files = extractCodeBlocks(content);
+      if (files.length === 0) {
+        // Keep the original code if refinement fails
+        throw new Error("Refinement did not produce updated code. Please try different feedback.");
+      }
+
+      this.state.files = files;
+      
+      for (const file of files) {
+        this.send({ type: "file_generated", agent: "frontend", file });
+      }
+
+      const htmlFile = files.find(f => f.language === "html");
+      if (htmlFile) {
+        this.send({ type: "preview_ready", html: htmlFile.content });
+      }
+
+      this.agentTasks["frontend"].status = "complete";
+      
+      this.send({
+        type: "complete",
+        agents: this.agentTasks,
+        summary: `✨ **Design refined!** Applied your changes.`,
+      });
+
+    } catch (err) {
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : "Refinement failed",
+      });
+    }
+  }
+
+  async answerQuestion(question: string, plan: ProjectPlan) {
+    try {
+      const message = `User question about the build plan: "${question}"
+
+Current Plan:
+${JSON.stringify(plan, null, 2)}
+
+Provide a helpful, concise answer.`;
+
+      const { content } = await callLangdockAssistant("architect", message);
+      
+      this.send({
+        type: "agent_message",
+        agent: "Planner",
+        message: content,
+      });
+
+    } catch (err) {
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : "Could not answer question",
+      });
+    }
+  }
 }
 
 // ============= MAIN HANDLER =============
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  // Handle CORS preflight - must return 200 OK for browsers
   if (req.method === "OPTIONS") {
     return new Response("ok", { status: 200, headers: corsHeaders });
   }
 
-  // GET diagnostics
   if (req.method === "GET") {
     const url = new URL(req.url);
     if (url.searchParams.get("action") === "diag") {
@@ -1034,13 +1192,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { action, message, plan } = await req.json();
+    const { action, message, plan, currentCode } = await req.json();
 
     if (action === "diag") {
       return handleDiagnostic();
     }
 
-    if (!message) {
+    if (!message && action !== "question") {
       return new Response(
         JSON.stringify({ error: "Message is required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -1060,6 +1218,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
           await orchestrator.startPlanning(message);
         } else if (action === "execute") {
           await orchestrator.startExecution(message, plan as ProjectPlan);
+        } else if (action === "refine") {
+          await orchestrator.handleRefine(message, currentCode, plan as ProjectPlan);
+        } else if (action === "question") {
+          await orchestrator.answerQuestion(message, plan as ProjectPlan);
         } else {
           send({ type: "error", message: "Unknown action" });
         }

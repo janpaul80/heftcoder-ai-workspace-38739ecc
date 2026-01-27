@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { AgentInfo, OrchestratorEvent, ProjectPlan, OrchestratorPhase } from '@/types/orchestrator';
+import type { AgentInfo, OrchestratorEvent, ProjectPlan, OrchestratorPhase, ClarifyingQuestion } from '@/types/orchestrator';
 import type { GeneratedProject } from '@/types/workspace';
 
 const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orchestrator`;
@@ -12,6 +12,8 @@ export interface OrchestratorState {
   summary: string | null;
   streamingOutput: Record<string, string>;
   generatedProject: GeneratedProject | null;
+  clarifyingQuestions: ClarifyingQuestion[];
+  agentMessages: Array<{ agent: string; message: string }>;
 }
 
 export function useOrchestrator() {
@@ -21,8 +23,11 @@ export function useOrchestrator() {
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [originalMessage, setOriginalMessage] = useState<string>("");
+  const [conversationHistory, setConversationHistory] = useState<Array<{ role: string; content: string }>>([]);
   const [streamingOutput, setStreamingOutput] = useState<Record<string, string>>({});
   const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
+  const [clarifyingQuestions, setClarifyingQuestions] = useState<ClarifyingQuestion[]>([]);
+  const [agentMessages, setAgentMessages] = useState<Array<{ agent: string; message: string }>>([]);
 
   const streamEvents = useCallback(async (url: string, body: object) => {
     const response = await fetch(url, {
@@ -79,15 +84,18 @@ export function useOrchestrator() {
               },
             }));
           } else if (event.type === "agents_update") {
-            // Batch update all agents
             setAgents(event.agents);
           } else if (event.type === "agent_stream") {
             setStreamingOutput(prev => ({
               ...prev,
               [event.agent]: event.output,
             }));
+          } else if (event.type === "clarifying_questions") {
+            setClarifyingQuestions(event.questions);
+            setPhase("clarifying");
+          } else if (event.type === "agent_message") {
+            setAgentMessages(prev => [...prev, { agent: event.agent, message: event.message }]);
           } else if (event.type === "file_generated") {
-            // Incrementally build project from generated files
             console.log("[useOrchestrator] File generated:", event.file.filename);
             setGeneratedProject(prev => {
               const existing = prev || {
@@ -108,7 +116,6 @@ export function useOrchestrator() {
               };
             });
           } else if (event.type === "preview_ready") {
-            // Update project with preview HTML
             setGeneratedProject(prev => ({
               ...prev,
               name: prev?.name || "Generated Project",
@@ -122,7 +129,6 @@ export function useOrchestrator() {
             setPlan(event.plan);
             setPhase("awaiting_approval");
           } else if (event.type === "project_complete") {
-            // Build final project from all files
             console.log("[useOrchestrator] Project complete with files:", event.files?.length);
             if (event.files && event.files.length > 0) {
               const finalProject: GeneratedProject = {
@@ -164,6 +170,9 @@ export function useOrchestrator() {
     setOriginalMessage(message);
     setStreamingOutput({});
     setGeneratedProject(null);
+    setClarifyingQuestions([]);
+    setAgentMessages([]);
+    setConversationHistory([{ role: 'user', content: message }]);
     
     // Initialize architect as thinking
     setAgents({
@@ -187,6 +196,77 @@ export function useOrchestrator() {
     }
   }, [streamEvents]);
 
+  // Answer clarifying questions
+  const answerQuestions = useCallback(async (answers: Record<string, string>) => {
+    setPhase("planning");
+    setClarifyingQuestions([]);
+    
+    // Build context from answers
+    const answerContext = Object.entries(answers)
+      .map(([questionId, answer]) => {
+        const q = clarifyingQuestions.find(cq => cq.id === questionId);
+        return `Q: ${q?.question}\nA: ${answer}`;
+      })
+      .join('\n\n');
+
+    const updatedMessage = `${originalMessage}\n\nAdditional context from user:\n${answerContext}`;
+    
+    setConversationHistory(prev => [...prev, { role: 'assistant', content: 'Questions answered' }, { role: 'user', content: answerContext }]);
+
+    try {
+      await streamEvents(ORCHESTRATOR_URL, { 
+        action: "plan", 
+        message: updatedMessage,
+        conversationHistory: conversationHistory,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setPhase("error");
+    }
+  }, [clarifyingQuestions, originalMessage, conversationHistory, streamEvents]);
+
+  // Reject plan with feedback
+  const rejectPlan = useCallback(async (feedback: string) => {
+    if (!plan || !originalMessage) return;
+    
+    setPhase("planning");
+    setPlan(null);
+    
+    const updatedMessage = `${originalMessage}\n\nUser feedback on previous plan:\n${feedback}\n\nPlease revise the plan accordingly.`;
+    
+    setConversationHistory(prev => [...prev, { role: 'user', content: `Revision request: ${feedback}` }]);
+
+    try {
+      await streamEvents(ORCHESTRATOR_URL, { 
+        action: "plan", 
+        message: updatedMessage,
+        conversationHistory: conversationHistory,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setPhase("error");
+    }
+  }, [plan, originalMessage, conversationHistory, streamEvents]);
+
+  // Ask question about plan
+  const askQuestion = useCallback(async (question: string) => {
+    if (!plan) return;
+    
+    setAgentMessages([]);
+    
+    const questionMessage = `User question about the plan: ${question}\n\nCurrent plan: ${JSON.stringify(plan, null, 2)}`;
+    
+    try {
+      await streamEvents(ORCHESTRATOR_URL, { 
+        action: "question", 
+        message: questionMessage,
+        plan,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    }
+  }, [plan, streamEvents]);
+
   // Phase 2: Approve plan and trigger build
   const approvePlan = useCallback(async () => {
     if (!plan || !originalMessage) return;
@@ -207,6 +287,28 @@ export function useOrchestrator() {
     }
   }, [plan, originalMessage, streamEvents]);
 
+  // Phase 3: Refine generated output
+  const refineProject = useCallback(async (feedback: string) => {
+    if (!generatedProject || !plan) return;
+    
+    setPhase("refining");
+    setError(null);
+    
+    const refinementMessage = `Refine the generated project based on this feedback: ${feedback}\n\nOriginal request: ${originalMessage}`;
+
+    try {
+      await streamEvents(ORCHESTRATOR_URL, { 
+        action: "refine", 
+        message: refinementMessage,
+        plan,
+        currentCode: generatedProject.files.map(f => `// ${f.path}\n${f.content}`).join('\n\n'),
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+      setPhase("error");
+    }
+  }, [generatedProject, plan, originalMessage, streamEvents]);
+
   const reset = useCallback(() => {
     setAgents({});
     setPlan(null);
@@ -216,6 +318,9 @@ export function useOrchestrator() {
     setOriginalMessage("");
     setStreamingOutput({});
     setGeneratedProject(null);
+    setClarifyingQuestions([]);
+    setAgentMessages([]);
+    setConversationHistory([]);
   }, []);
 
   return {
@@ -226,8 +331,14 @@ export function useOrchestrator() {
     summary,
     streamingOutput,
     generatedProject,
+    clarifyingQuestions,
+    agentMessages,
     requestPlan,
+    answerQuestions,
+    rejectPlan,
+    askQuestion,
     approvePlan,
+    refineProject,
     reset,
   };
 }
