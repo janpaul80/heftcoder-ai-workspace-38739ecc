@@ -8,7 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-v5-fallback-ai";
+const BUILD_ID = "orch-v6-fast-failover";
 
 // ============= AI PROVIDER CONFIGURATION =============
 
@@ -477,44 +477,25 @@ const AGENTS = {
 
 // ============= LANGDOCK API CALL =============
 
-async function fetchWithRetry(
+async function fetchWithTimeout(
   url: string, 
   options: RequestInit, 
-  maxRetries = 2,
-  baseDelayMs = 500
+  timeoutMs = 15000 // 15s timeout - fail fast
 ): Promise<Response> {
-  let lastError: Error | null = null;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout (faster)
-      
-      const response = await fetch(url, { 
-        ...options, 
-        signal: controller.signal 
-      });
-      
-      clearTimeout(timeoutId);
-      return response;
-    } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      const isRetryable = lastError.message.includes('connection reset') || 
-                          lastError.message.includes('network') ||
-                          lastError.message.includes('timeout') ||
-                          lastError.message.includes('abort');
-      
-      if (!isRetryable || attempt === maxRetries - 1) {
-        throw lastError;
-      }
-      
-      const delay = baseDelayMs * Math.pow(2, attempt);
-      console.log(`[Langdock] Retry ${attempt + 1}/${maxRetries} after ${delay}ms...`);
-      await new Promise(r => setTimeout(r, delay));
-    }
+  try {
+    const response = await fetch(url, { 
+      ...options, 
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+    return response;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err instanceof Error ? err : new Error(String(err));
   }
-  
-  throw lastError || new Error("Max retries exceeded");
 }
 
 // ============= LOVABLE AI FALLBACK =============
@@ -535,7 +516,7 @@ async function callLovableAI(
 
   console.log(`[Lovable AI] Fallback call for agent: ${agentKey}`);
   
-  const response = await fetchWithRetry(LOVABLE_AI_GATEWAY_URL, {
+  const response = await fetchWithTimeout(LOVABLE_AI_GATEWAY_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${apiKey}`,
@@ -548,7 +529,7 @@ async function callLovableAI(
       ],
       max_tokens: 8000,
     }),
-  });
+  }, 45000); // 45s for Lovable AI (more time for generation)
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -606,7 +587,7 @@ async function callLangdockAssistant(
   console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
   
   try {
-    const response = await fetchWithRetry(LANGDOCK_ASSISTANT_API_URL, {
+    const response = await fetchWithTimeout(LANGDOCK_ASSISTANT_API_URL, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${apiKey}`,
@@ -618,7 +599,7 @@ async function callLangdockAssistant(
           { role: "user", content: fullMessage }
         ],
       }),
-    });
+    }, 15000); // 15s timeout - fail fast to fallback
 
     // Check for errors that should trigger fallback
     if (!response.ok) {
