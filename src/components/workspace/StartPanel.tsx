@@ -12,6 +12,7 @@ interface StartPanelProps {
   onSelectTemplate: (template: Template) => void;
   onSelectProject: (project: ProjectHistoryItem) => void;
   onStartBlank: () => void;
+  onSendPrompt?: (prompt: string) => void;
 }
 
 const QUICK_START_PROMPTS = [
@@ -29,12 +30,13 @@ const QUICK_START_PROMPTS_SHORT = [
   "Restaurant landing page",
 ];
 
-export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank }: StartPanelProps) {
+export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, onSendPrompt }: StartPanelProps) {
   const [activeTab, setActiveTab] = useState('templates');
   const { data: featuredTemplates } = useFeaturedTemplates();
   const isMobile = useIsMobile();
 
   const prompts = isMobile ? QUICK_START_PROMPTS_SHORT : QUICK_START_PROMPTS;
+  const fullPrompts = QUICK_START_PROMPTS; // Always use full prompts for sending
 
   return (
     <div className="h-full flex flex-col bg-card overflow-hidden">
@@ -65,8 +67,11 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank }: 
             <button
               key={index}
               onClick={() => {
-                // This would trigger the chat with this prompt
-                onStartBlank();
+                if (onSendPrompt) {
+                  onSendPrompt(fullPrompts[index]);
+                } else {
+                  onStartBlank();
+                }
               }}
               className={cn(
                 "group flex items-center justify-between rounded-lg border border-border bg-secondary/30 hover:bg-secondary hover:border-primary/30 transition-all text-left",

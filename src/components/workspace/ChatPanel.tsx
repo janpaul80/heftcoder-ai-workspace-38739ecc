@@ -33,19 +33,20 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleStartBlank = () => {
-    // Just focus the input - user will type their own prompt
-  };
-
   // Show start panel when no messages
   if (messages.length === 0) {
+    const handleQuickStart = (prompt: string) => {
+      onSendMessage(prompt, []);
+    };
+
     return (
       <div className="flex flex-col h-full bg-card">
         <div className="flex-1 overflow-hidden">
           <StartPanel 
             onSelectTemplate={onSelectTemplate || (() => {})}
             onSelectProject={onSelectProject || (() => {})}
-            onStartBlank={handleStartBlank}
+            onStartBlank={() => {}}
+            onSendPrompt={handleQuickStart}
           />
         </div>
         <ChatInput onSend={onSendMessage} disabled={isLoading} />
