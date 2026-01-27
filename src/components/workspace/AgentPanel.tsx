@@ -1,7 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { AgentInfo, AgentStatus, ProjectPlan, OrchestratorPhase } from '@/types/orchestrator';
 import { 
-  Bot, 
   CheckCircle2, 
   Loader2, 
   AlertCircle, 
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useState, memo } from 'react';
+import heftcoderLogo from '@/assets/heftcoder-logo.png';
 
 interface AgentPanelProps {
   agents: Record<string, AgentInfo>;
@@ -113,10 +113,10 @@ const AgentCard = memo(function AgentCard({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <div className={cn(
-              "p-1.5 rounded-lg bg-white/20 backdrop-blur-sm",
+              "rounded-lg overflow-hidden",
               isActive && "animate-pulse"
             )}>
-              <Bot className="h-4 w-4 text-white" />
+              <img src={heftcoderLogo} alt="Agent" className="h-6 w-6 object-contain" />
             </div>
             <span className="font-semibold text-white text-sm">{agent.agentName}</span>
           </div>
@@ -263,8 +263,8 @@ export function AgentPanel({
       {/* Header */}
       <div className="mb-4 flex items-center gap-2">
         <div className="relative">
-          <div className="p-1.5 rounded-lg bg-primary/20">
-            <Bot className="h-5 w-5 text-primary" />
+          <div className="rounded-lg overflow-hidden">
+            <img src={heftcoderLogo} alt="HeftCoder" className="h-7 w-7 object-contain" />
           </div>
           {phase !== "complete" && phase !== "error" && (
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse ring-2 ring-card" />

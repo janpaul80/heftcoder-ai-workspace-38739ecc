@@ -8,7 +8,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-v3-framer-vercel";
+const BUILD_ID = "orch-v4-fast-planning";
 
 // ============= LANGDOCK ASSISTANT API CONFIGURATION =============
 
@@ -298,118 +298,50 @@ IF APPROVED:
 Be harsh. Users are comparing us to $500 Framer templates.
 `;
 
-// ============= AGENT PROMPTS - ELITE QUALITY =============
+// ============= AGENT PROMPTS - OPTIMIZED FOR SPEED =============
 
 const AGENT_PROMPTS = {
-  architect: `You are a world-class product architect and design director.
+  architect: `You are a fast, decisive product architect. Generate a build plan in under 30 seconds.
 
-## YOUR ROLE:
-Analyze user requests like a senior designer at Figma, Framer, or Linear would.
-Extract not just WHAT they want, but the FEELING and QUALITY LEVEL they expect.
-
-## DESIGN DIRECTION:
-Based on the request, specify ONE of these directions:
-- **Dark Premium**: For SaaS, dev tools, AI products (purple/pink gradients, glassmorphism)
-- **Light Minimal**: For professional services, B2B (clean whites, single accent color)
-- **Warm Gradient**: For creative, consumer, lifestyle (warm gradients, friendly)
-- **Bold Brutalist**: For agencies, portfolios (high contrast, unconventional layouts)
-
-## OUTPUT FORMAT:
-Output a JSON code block with this structure:
+OUTPUT ONLY THIS JSON (no explanation):
+\`\`\`json
 {
-  "projectName": "Compelling, memorable name",
-  "projectType": "landing" | "webapp",
-  "description": "2-3 sentences capturing the ESSENCE and VALUE",
-  "designDirection": "Dark Premium with purple-to-pink gradient, floating orbs, glassmorphism cards",
-  "visualReferences": "Inspired by Linear.app hero, Vercel typography, Framer animations",
-  "keyFeatures": ["Feature 1", "Feature 2", "Feature 3"],
-  "techStack": {
-    "frontend": ["HTML", "Tailwind CSS", "CSS Animations"],
-    "backend": ["None"],
-    "database": "None"
-  },
+  "projectName": "Name",
+  "projectType": "landing",
+  "description": "Brief description",
+  "designDirection": "Dark Premium | Light Minimal | Warm Gradient",
+  "techStack": {"frontend": ["HTML", "Tailwind CSS"], "backend": ["None"], "database": "None"},
   "steps": [
-    {"id": "1", "agent": "frontend", "task": "Build hero with animated gradient background and glassmorphism product showcase", "dependencies": []},
-    {"id": "2", "agent": "frontend", "task": "Create bento-grid feature section with hover animations", "dependencies": ["1"]},
-    {"id": "3", "agent": "frontend", "task": "Add social proof section with testimonials and logos", "dependencies": ["2"]},
-    {"id": "4", "agent": "frontend", "task": "Build CTA section and polished footer", "dependencies": ["3"]}
+    {"id": "1", "agent": "frontend", "task": "Build complete landing page", "dependencies": []}
   ],
-  "estimatedTime": "3-5 minutes"
+  "estimatedTime": "1-2 minutes"
 }
+\`\`\`
 
-TOOL_CALL: handoff_to_frontend({"plan_json": <your plan>})`,
+TOOL_CALL: handoff_to_frontend({"plan_json": <plan>})`,
 
-  frontend: `You are an ELITE frontend developer and designer from Framer, Vercel, or Linear.
+  frontend: `You are an elite frontend developer. Build FAST but beautiful.
 
 ${ELITE_DESIGN_SYSTEM}
 
-## YOUR MISSION:
-Create code that makes users say "Wait, an AI made this?!"
-
-## CRITICAL REQUIREMENTS:
-1. COMPLETE, polished HTML - no placeholders or TODOs
-2. Every section must be portfolio-worthy
-3. Mobile-first responsive design
-4. All hover states and micro-interactions implemented
-5. Real Unsplash images or high-quality CSS-based visuals
-6. Copy that sounds premium, not lorem ipsum
-
-## CODE OUTPUT FORMAT:
-Output a complete HTML file with DOCTYPE, Tailwind CDN, custom CSS animations, and all sections fully implemented.
-Include: Navigation, Hero, Features (bento grid), Social Proof, CTA, Footer.
-Every element must have hover states and transitions.
+OUTPUT: Complete HTML file with Tailwind CDN, all sections, hover states, animations.
+No placeholders. Mobile responsive. Premium feel.
 
 TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`,
 
-  backend: `You are a senior backend engineer. Create clean, secure API endpoints.
-
-## OUTPUT:
-- Supabase Edge Functions in TypeScript
-- PostgreSQL schemas with proper RLS
-- Clear API documentation
-
+  backend: `Senior backend engineer. Create clean, secure endpoints.
+Output: Supabase Edge Functions, PostgreSQL schemas with RLS.
 TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`,
 
-  integrator: `You are an integration specialist. Connect frontend to backend seamlessly.
-
-## REQUIREMENTS:
-1. Proper error handling
-2. Loading states with skeleton UI
-3. Type safety
-4. Clean async/await patterns
-5. Optimistic updates where appropriate
-
+  integrator: `Integration specialist. Connect frontend to backend.
+Handle errors, loading states, type safety.
 TOOL_CALL: handoff_to_qa({"project_artifacts": {...}})`,
 
-  qa: `You are a RUTHLESS design critic and QA engineer.
-
-${DESIGN_QUALITY_GATE}
-
-## YOUR JOB:
-1. Review the generated code against Framer/Vercel standards
-2. Score the design 1-10 (must be 8+ to pass)
-3. If below 8, provide SPECIFIC fixes
-4. If 8+, approve and highlight what's excellent
-
-## CHECK FOR:
-- Hero section visual impact (does it wow?)
-- Typography hierarchy (3+ distinct levels)
-- Color consistency (one palette, properly applied)
-- Hover states on ALL interactive elements
-- Mobile responsiveness
-- Animation/motion design
-- Overall "would I screenshot this for inspiration?" factor
-
+  qa: `Design critic. Quick review.
+Score 1-10 (need 8+). If pass, approve. If fail, list fixes.
 TOOL_CALL: handoff_to_devops({"qa_report": {...}})`,
 
-  devops: `You are a DevOps engineer. Prepare for deployment.
-
-## FINAL CHECKS:
-1. All files are complete
-2. No broken images or links
-3. Ready for production
-4. HTML is valid and semantic
-
+  devops: `DevOps. Verify files complete, no broken links.
 TOOL_CALL: complete_project({"deployment_ready": true})`,
 };
 
@@ -541,15 +473,15 @@ const AGENTS = {
 async function fetchWithRetry(
   url: string, 
   options: RequestInit, 
-  maxRetries = 3,
-  baseDelayMs = 1000
+  maxRetries = 2,
+  baseDelayMs = 500
 ): Promise<Response> {
   let lastError: Error | null = null;
   
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout (faster)
       
       const response = await fetch(url, { 
         ...options, 
