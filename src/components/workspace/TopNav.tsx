@@ -6,6 +6,7 @@ import hcIcon from '@/assets/hc-icon.png';
 import type { UserTier } from '@/types/workspace';
 import { GitHubPopover } from './GitHubPopover';
 import { PublishButton } from './PublishButton';
+import { ShareButton } from './ShareButton';
 import { cn } from '@/lib/utils';
 
 interface TopNavProps {
@@ -107,6 +108,8 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
       </div>
 
       <div className="flex items-center gap-2">
+        <ShareButton projectName="landing-page" />
+        
         <GitHubPopover 
           isConnected={true}
           repoName="janpaul80/heftcoder-project"
