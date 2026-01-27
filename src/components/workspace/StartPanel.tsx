@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TemplateGallery } from './TemplateGallery';
 import { ProjectHistoryPanel } from './ProjectHistoryPanel';
 import { useFeaturedTemplates, type Template } from '@/hooks/useTemplates';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { ProjectHistoryItem } from '@/hooks/useProjectHistory';
 import { cn } from '@/lib/utils';
 
@@ -20,62 +21,91 @@ const QUICK_START_PROMPTS = [
   "Make a restaurant landing page with menu section",
 ];
 
+// Shorter prompts for mobile
+const QUICK_START_PROMPTS_SHORT = [
+  "Modern portfolio site",
+  "SaaS pricing page",
+  "E-commerce product page",
+  "Restaurant landing page",
+];
+
 export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank }: StartPanelProps) {
   const [activeTab, setActiveTab] = useState('templates');
   const { data: featuredTemplates } = useFeaturedTemplates();
+  const isMobile = useIsMobile();
+
+  const prompts = isMobile ? QUICK_START_PROMPTS_SHORT : QUICK_START_PROMPTS;
 
   return (
-    <div className="h-full flex flex-col bg-card">
+    <div className="h-full flex flex-col bg-card overflow-hidden">
       {/* Header */}
-      <div className="p-6 border-b border-border">
-        <h2 className="text-xl font-semibold text-foreground mb-1">
+      <div className={cn("border-b border-border", isMobile ? "p-4" : "p-6")}>
+        <h2 className={cn("font-semibold text-foreground mb-1", isMobile ? "text-lg" : "text-xl")}>
           What would you like to build?
         </h2>
-        <p className="text-muted-foreground">
-          Start from a template, continue a project, or describe what you want to create.
+        <p className={cn("text-muted-foreground", isMobile && "text-sm")}>
+          {isMobile 
+            ? "Start from a template or describe your project."
+            : "Start from a template, continue a project, or describe what you want to create."
+          }
         </p>
       </div>
 
       {/* Quick start suggestions */}
-      <div className="p-6 border-b border-border">
+      <div className={cn("border-b border-border", isMobile ? "p-4" : "p-6")}>
         <div className="flex items-center gap-2 mb-3">
           <Sparkles className="h-4 w-4 text-primary" />
           <span className="text-sm font-medium text-foreground">Quick start</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {QUICK_START_PROMPTS.map((prompt, index) => (
+        <div className={cn(
+          "grid gap-2",
+          isMobile ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2"
+        )}>
+          {prompts.map((prompt, index) => (
             <button
               key={index}
               onClick={() => {
                 // This would trigger the chat with this prompt
                 onStartBlank();
               }}
-              className="group flex items-center justify-between p-3 rounded-lg border border-border bg-secondary/30 hover:bg-secondary hover:border-primary/30 transition-all text-left"
+              className={cn(
+                "group flex items-center justify-between rounded-lg border border-border bg-secondary/30 hover:bg-secondary hover:border-primary/30 transition-all text-left",
+                isMobile ? "p-2.5" : "p-3"
+              )}
             >
-              <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+              <span className={cn(
+                "text-muted-foreground group-hover:text-foreground transition-colors",
+                isMobile ? "text-xs line-clamp-2" : "text-sm"
+              )}>
                 {prompt}
               </span>
-              <ArrowRight className="h-4 w-4 text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0 ml-2" />
+              <ArrowRight className={cn(
+                "text-muted-foreground/50 group-hover:text-primary transition-colors shrink-0 ml-2",
+                isMobile ? "h-3 w-3" : "h-4 w-4"
+              )} />
             </button>
           ))}
         </div>
       </div>
 
       {/* Tabs for templates/history */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <TabsList className="mx-6 mt-4 bg-secondary">
-            <TabsTrigger value="templates" className="gap-2">
-              <Sparkles className="h-4 w-4" />
+          <TabsList className={cn(
+            "bg-secondary",
+            isMobile ? "mx-4 mt-3" : "mx-6 mt-4"
+          )}>
+            <TabsTrigger value="templates" className={cn("gap-1.5", isMobile && "text-xs")}>
+              <Sparkles className={cn(isMobile ? "h-3 w-3" : "h-4 w-4")} />
               Templates
             </TabsTrigger>
-            <TabsTrigger value="history" className="gap-2">
-              <Clock className="h-4 w-4" />
-              Recent Projects
+            <TabsTrigger value="history" className={cn("gap-1.5", isMobile && "text-xs")}>
+              <Clock className={cn(isMobile ? "h-3 w-3" : "h-4 w-4")} />
+              Recent
             </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className={cn("flex-1 overflow-y-auto scrollbar-thin", isMobile ? "p-4" : "p-6")}>
             <TabsContent value="templates" className="mt-0 h-full">
               <TemplateGallery onSelectTemplate={onSelectTemplate} />
             </TabsContent>
@@ -89,22 +119,25 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank }: 
 
       {/* Featured templates footer (when on history tab) */}
       {activeTab === 'history' && featuredTemplates && featuredTemplates.length > 0 && (
-        <div className="p-4 border-t border-border bg-secondary/30">
-          <div className="flex items-center gap-2 mb-3">
+        <div className={cn("border-t border-border bg-secondary/30", isMobile ? "p-3" : "p-4")}>
+          <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium text-foreground">Featured templates</span>
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
             {featuredTemplates.slice(0, 3).map((template) => (
               <button
                 key={template.id}
                 onClick={() => onSelectTemplate(template)}
                 className={cn(
-                  "shrink-0 px-4 py-2 rounded-lg border border-border bg-card",
-                  "hover:border-primary/50 hover:bg-secondary transition-all text-left"
+                  "shrink-0 rounded-lg border border-border bg-card",
+                  "hover:border-primary/50 hover:bg-secondary transition-all text-left",
+                  isMobile ? "px-3 py-1.5" : "px-4 py-2"
                 )}
               >
-                <span className="text-sm font-medium text-foreground">{template.name}</span>
+                <span className={cn("font-medium text-foreground", isMobile ? "text-xs" : "text-sm")}>
+                  {template.name}
+                </span>
               </button>
             ))}
           </div>

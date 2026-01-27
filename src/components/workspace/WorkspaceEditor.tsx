@@ -6,10 +6,16 @@ import { FileExplorerModal } from './FileExplorerModal';
 import { PlanApprovalCard } from './PlanApprovalCard';
 import { RefinePanel } from './RefinePanel';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { Message, Attachment, ProjectStatus, UserTier, GeneratedProject } from '@/types/workspace';
 import type { Template } from '@/hooks/useTemplates';
 import type { ProjectHistoryItem } from '@/hooks/useProjectHistory';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { MessageSquare, Eye } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+type MobileTab = 'chat' | 'preview';
 
 export function WorkspaceEditor() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -18,6 +24,9 @@ export function WorkspaceEditor() {
   const [fileExplorerOpen, setFileExplorerOpen] = useState(false);
   const [userTier] = useState<UserTier>('pro');
   const [loadedProject, setLoadedProject] = useState<GeneratedProject | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
+  
+  const isMobile = useIsMobile();
   
   const { 
     agents, 
@@ -41,8 +50,12 @@ export function WorkspaceEditor() {
     if (generatedProject && generatedProject.files.length > 0) {
       setProjectStatus({ status: 'complete' });
       setLoadedProject(null);
+      // Auto-switch to preview on mobile when project is ready
+      if (isMobile) {
+        setMobileTab('preview');
+      }
     }
-  }, [generatedProject]);
+  }, [generatedProject, isMobile]);
 
   // Show plan approval in messages when ready
   useEffect(() => {
@@ -161,7 +174,12 @@ export function WorkspaceEditor() {
       timestamp: new Date(),
     };
     setMessages([loadMessage]);
-  }, []);
+    
+    // Switch to preview on mobile when loading a project
+    if (isMobile) {
+      setMobileTab('preview');
+    }
+  }, [isMobile]);
 
   const handleApprove = useCallback(async () => {
     const approvalMessage: Message = {
@@ -232,6 +250,7 @@ export function WorkspaceEditor() {
     setMessages([]);
     setProjectStatus({ status: 'idle' });
     setLoadedProject(null);
+    setMobileTab('chat');
   }, [reset]);
 
   const isActive = phase !== "idle" && phase !== "complete" && phase !== "error" && phase !== "awaiting_approval";
@@ -241,6 +260,100 @@ export function WorkspaceEditor() {
   const showApproval = phase === "awaiting_approval" && plan;
   const showRefine = phase === "complete" && hasGeneratedFiles;
 
+  // Mobile layout with tabs
+  if (isMobile) {
+    return (
+      <div className="h-screen flex flex-col bg-background">
+        <TopNav 
+          onFileExplorerOpen={() => setFileExplorerOpen(true)}
+          userTier={userTier}
+          isMobile={true}
+        />
+
+        {/* Mobile Tab Bar */}
+        <div className="border-b border-border bg-card px-2 py-1.5">
+          <Tabs value={mobileTab} onValueChange={(v) => setMobileTab(v as MobileTab)} className="w-full">
+            <TabsList className="w-full grid grid-cols-2 h-10">
+              <TabsTrigger 
+                value="chat" 
+                className="flex items-center gap-2 text-sm"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Chat
+              </TabsTrigger>
+              <TabsTrigger 
+                value="preview" 
+                className={cn(
+                  "flex items-center gap-2 text-sm",
+                  hasGeneratedFiles && "relative"
+                )}
+              >
+                <Eye className="h-4 w-4" />
+                Preview
+                {hasGeneratedFiles && (
+                  <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full animate-pulse" />
+                )}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {/* Mobile Content */}
+        <div className="flex-1 overflow-hidden">
+          {mobileTab === 'chat' ? (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-hidden">
+                <ChatPanel
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  onSelectTemplate={handleSelectTemplate}
+                  onSelectProject={handleSelectProject}
+                  isLoading={isLoading}
+                  agents={agents}
+                  phase={phase}
+                />
+              </div>
+              
+              {/* Plan Approval Card */}
+              {showApproval && (
+                <div className="p-3 border-t border-border bg-background/95 backdrop-blur max-h-[60vh] overflow-y-auto">
+                  <PlanApprovalCard
+                    plan={plan}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onAskQuestion={handleAskQuestion}
+                  />
+                </div>
+              )}
+
+              {/* Refine Panel */}
+              {showRefine && (
+                <div className="p-3 border-t border-border bg-background/95 backdrop-blur">
+                  <RefinePanel
+                    onRefine={handleRefine}
+                    onStartOver={handleStartOver}
+                    isRefining={isRefining}
+                  />
+                </div>
+              )}
+            </div>
+          ) : (
+            <PreviewPanel 
+              status={isActive && !hasGeneratedFiles && !loadedProject ? { status: 'working' } : projectStatus}
+              project={displayProject}
+            />
+          )}
+        </div>
+
+        <FileExplorerModal
+          open={fileExplorerOpen}
+          onOpenChange={setFileExplorerOpen}
+        />
+      </div>
+    );
+  }
+
+  // Desktop layout with resizable panels
   return (
     <div className="h-screen flex flex-col bg-background">
       <TopNav 

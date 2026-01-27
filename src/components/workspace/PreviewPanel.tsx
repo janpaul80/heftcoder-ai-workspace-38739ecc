@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Smartphone, Monitor, Tablet, ExternalLink, Code, Eye, Download, Maximize2 } from 'lucide-react';
+import { Smartphone, Monitor, Tablet, ExternalLink, Code, Eye, Download, Maximize2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useIsMobile } from '@/hooks/use-mobile';
 import hcIcon from '@/assets/hc-icon.png';
 import type { ProjectStatus, GeneratedProject, ProjectType } from '@/types/workspace';
 import { cn } from '@/lib/utils';
@@ -20,55 +21,65 @@ const DEVICE_SIZES: Record<DeviceType, { width: string; height: string }> = {
   mobile: { width: '375px', height: '667px' },
 };
 
-function WorkingIndicator() {
+function WorkingIndicator({ isMobile }: { isMobile?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="relative mb-8">
+    <div className="flex flex-col items-center justify-center h-full p-4">
+      <div className="relative mb-6">
         <div className="absolute inset-0 bg-primary/30 blur-3xl rounded-full scale-150 animate-pulse-subtle" />
         <img
           src={hcIcon}
           alt="HeftCoder"
-          className="relative w-24 h-24 rounded-2xl animate-pulse-glow status-glow"
+          className={cn(
+            "relative rounded-2xl animate-pulse-glow status-glow",
+            isMobile ? "w-16 h-16" : "w-24 h-24"
+          )}
         />
       </div>
       <div className="flex items-center gap-2">
-        <span className="text-xl font-medium text-foreground">Building your project</span>
+        <span className={cn("font-medium text-foreground", isMobile ? "text-base" : "text-xl")}>
+          Building your project
+        </span>
         <div className="flex gap-1">
           <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
           <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
           <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
         </div>
       </div>
-      <p className="text-muted-foreground mt-2 text-sm">Preview will appear when ready...</p>
-    </div>
-  );
-}
-
-function IdleState() {
-  return (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="mb-6 opacity-60">
-        <img
-          src={hcIcon}
-          alt="HeftCoder"
-          className="w-20 h-20 rounded-2xl"
-        />
-      </div>
-      <p className="text-lg text-muted-foreground text-center max-w-md">
-        Your project preview will appear here once generation starts
+      <p className={cn("text-muted-foreground mt-2", isMobile ? "text-xs" : "text-sm")}>
+        Preview will appear when ready...
       </p>
     </div>
   );
 }
 
-function ErrorState({ message }: { message?: string }) {
+function IdleState({ isMobile }: { isMobile?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="text-destructive text-lg font-medium mb-2">
+    <div className="flex flex-col items-center justify-center h-full p-4">
+      <div className="mb-4 opacity-60">
+        <img
+          src={hcIcon}
+          alt="HeftCoder"
+          className={cn("rounded-2xl", isMobile ? "w-14 h-14" : "w-20 h-20")}
+        />
+      </div>
+      <p className={cn("text-muted-foreground text-center max-w-md", isMobile ? "text-sm" : "text-lg")}>
+        {isMobile 
+          ? "Your preview will appear here"
+          : "Your project preview will appear here once generation starts"
+        }
+      </p>
+    </div>
+  );
+}
+
+function ErrorState({ message, isMobile }: { message?: string; isMobile?: boolean }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full p-4">
+      <div className={cn("text-destructive font-medium mb-2", isMobile ? "text-base" : "text-lg")}>
         Something went wrong
       </div>
       {message && (
-        <p className="text-muted-foreground text-sm">{message}</p>
+        <p className={cn("text-muted-foreground text-center", isMobile ? "text-xs" : "text-sm")}>{message}</p>
       )}
     </div>
   );
@@ -205,6 +216,7 @@ export function PreviewPanel({ status, project }: PreviewPanelProps) {
   const [device, setDevice] = useState<DeviceType>('desktop');
   const [viewMode, setViewMode] = useState<ViewMode>('preview');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const isMobile = useIsMobile();
 
   const hasProject = project && project.files.length > 0;
 
@@ -229,29 +241,43 @@ export function PreviewPanel({ status, project }: PreviewPanelProps) {
     )}>
       {/* Toolbar */}
       {hasProject && (
-        <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
+        <div className={cn(
+          "flex items-center justify-between border-b border-border bg-card/50 backdrop-blur-sm",
+          isMobile ? "px-2 py-1.5" : "px-4 py-2"
+        )}>
+          <div className="flex items-center gap-2 min-w-0">
             <ProjectTypeBadge type={project.type} />
-            <span className="text-sm font-medium text-foreground">{project.name}</span>
+            <span className={cn(
+              "font-medium text-foreground truncate",
+              isMobile ? "text-xs max-w-[100px]" : "text-sm"
+            )}>
+              {project.name}
+            </span>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {/* View mode toggle */}
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-              <TabsList className="h-8">
-                <TabsTrigger value="preview" className="h-6 px-2 text-xs gap-1">
-                  <Eye className="h-3 w-3" />
-                  Preview
+              <TabsList className={cn(isMobile ? "h-7" : "h-8")}>
+                <TabsTrigger value="preview" className={cn(
+                  "gap-1",
+                  isMobile ? "h-5 px-1.5 text-[10px]" : "h-6 px-2 text-xs"
+                )}>
+                  <Eye className={cn(isMobile ? "h-2.5 w-2.5" : "h-3 w-3")} />
+                  {!isMobile && "Preview"}
                 </TabsTrigger>
-                <TabsTrigger value="code" className="h-6 px-2 text-xs gap-1">
-                  <Code className="h-3 w-3" />
-                  Code
+                <TabsTrigger value="code" className={cn(
+                  "gap-1",
+                  isMobile ? "h-5 px-1.5 text-[10px]" : "h-6 px-2 text-xs"
+                )}>
+                  <Code className={cn(isMobile ? "h-2.5 w-2.5" : "h-3 w-3")} />
+                  {!isMobile && "Code"}
                 </TabsTrigger>
               </TabsList>
             </Tabs>
 
-            {/* Device selector (only in preview mode) */}
-            {viewMode === 'preview' && (
+            {/* Device selector (only in preview mode, hide on mobile) */}
+            {viewMode === 'preview' && !isMobile && (
               <div className="flex items-center gap-1 bg-secondary/50 rounded-lg p-1">
                 <Button
                   variant={device === 'desktop' ? 'secondary' : 'ghost'}
@@ -287,34 +313,47 @@ export function PreviewPanel({ status, project }: PreviewPanelProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className={cn(isMobile ? "h-7 w-7" : "h-8 w-8")}
               onClick={handleDownload}
               title="Download"
             >
-              <Download className="h-4 w-4" />
+              <Download className={cn(isMobile ? "h-3.5 w-3.5" : "h-4 w-4")} />
             </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => setIsFullscreen(!isFullscreen)}
-              title="Fullscreen"
-            >
-              <Maximize2 className="h-4 w-4" />
-            </Button>
+            {!isMobile && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setIsFullscreen(!isFullscreen)}
+                title="Fullscreen"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            )}
+            {isFullscreen && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setIsFullscreen(false)}
+                title="Exit Fullscreen"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       )}
 
       {/* Content */}
       <div className="flex-1 min-h-0">
-        {status.status === 'idle' && !hasProject && <IdleState />}
-        {status.status === 'working' && !hasProject && <WorkingIndicator />}
-        {status.status === 'error' && !hasProject && <ErrorState message={status.message} />}
+        {status.status === 'idle' && !hasProject && <IdleState isMobile={isMobile} />}
+        {status.status === 'working' && !hasProject && <WorkingIndicator isMobile={isMobile} />}
+        {status.status === 'error' && !hasProject && <ErrorState message={status.message} isMobile={isMobile} />}
         
         {hasProject && (
           viewMode === 'preview' 
-            ? <LivePreview project={project} device={device} />
+            ? <LivePreview project={project} device={isMobile ? 'desktop' : device} />
             : <CodeView project={project} />
         )}
       </div>
