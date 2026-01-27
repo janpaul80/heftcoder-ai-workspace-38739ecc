@@ -176,10 +176,10 @@ export const ChatMessage = memo(function ChatMessage({ message, isStreaming }: C
       {/* Message content */}
       <div
         className={cn(
-          "max-w-[80%] rounded-2xl px-4 py-3",
+          "max-w-[80%] rounded-2xl px-4 py-3 scrollbar-thin",
           isUser
-            ? "bg-primary text-primary-foreground rounded-tr-md"
-            : "bg-chat-ai text-foreground rounded-tl-md"
+            ? "bg-secondary text-foreground rounded-tr-md"
+            : "bg-secondary/50 text-foreground rounded-tl-md"
         )}
       >
         {isUser ? (

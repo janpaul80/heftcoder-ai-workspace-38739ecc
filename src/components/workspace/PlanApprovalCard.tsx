@@ -36,8 +36,8 @@ export function PlanApprovalCard({ plan, onApprove, onReject, onAskQuestion }: P
   };
 
   return (
-    <Card className="border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 shadow-lg shadow-primary/10">
-      <CardHeader className="pb-3">
+    <Card className="border-primary/30 bg-gradient-to-br from-card via-card to-primary/5 shadow-lg shadow-primary/10 flex flex-col max-h-[70vh]">
+      <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-lg bg-primary/10">
@@ -48,14 +48,14 @@ export function PlanApprovalCard({ plan, onApprove, onReject, onAskQuestion }: P
               <CardDescription className="text-sm">{plan.projectType} project</CardDescription>
             </div>
           </div>
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs flex-shrink-0">
             <Clock className="h-3 w-3 mr-1" />
             {plan.estimatedTime}
           </Badge>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 overflow-y-auto scrollbar-thin flex-1 min-h-0">
         {/* Description */}
         <p className="text-sm text-muted-foreground">{plan.description}</p>
 
@@ -138,7 +138,7 @@ export function PlanApprovalCard({ plan, onApprove, onReject, onAskQuestion }: P
       </CardContent>
 
       {!showFeedback && !showQuestion && (
-        <CardFooter className="flex gap-2 pt-0">
+        <CardFooter className="flex gap-2 pt-4 flex-shrink-0 border-t border-border/30">
           <Button 
             onClick={onApprove} 
             className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
