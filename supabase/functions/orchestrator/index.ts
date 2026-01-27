@@ -8,11 +8,16 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-v4-fast-planning";
+const BUILD_ID = "orch-v5-fallback-ai";
 
-// ============= LANGDOCK ASSISTANT API CONFIGURATION =============
+// ============= AI PROVIDER CONFIGURATION =============
 
+// Primary: Langdock Assistant API
 const LANGDOCK_ASSISTANT_API_URL = "https://api.langdock.com/assistant/v1/chat/completions";
+
+// Fallback: Lovable AI Gateway (auto-configured)
+const LOVABLE_AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const LOVABLE_AI_MODEL = "google/gemini-3-flash-preview";
 
 const AGENT_ASSISTANT_ENV_VARS: Record<string, string> = {
   architect: "AGENT_ARCHITECT_ID",
@@ -358,10 +363,12 @@ function handleDiagnostic(): Response {
   const diag = {
     build: BUILD_ID,
     timestamp: new Date().toISOString(),
-    executionLayer: "langdock-assistant-api",
-    apiUrl: LANGDOCK_ASSISTANT_API_URL,
+    executionLayer: "langdock-with-fallback",
+    primaryApi: LANGDOCK_ASSISTANT_API_URL,
+    fallbackApi: LOVABLE_AI_GATEWAY_URL,
     secrets: {
       LANGDOCK_API_KEY: Boolean(envObj.LANGDOCK_API_KEY && envObj.LANGDOCK_API_KEY.length > 0),
+      LOVABLE_API_KEY: Boolean(envObj.LOVABLE_API_KEY && envObj.LOVABLE_API_KEY.length > 0),
     },
     assistants: assistantStatus,
   };
@@ -510,6 +517,65 @@ async function fetchWithRetry(
   throw lastError || new Error("Max retries exceeded");
 }
 
+// ============= LOVABLE AI FALLBACK =============
+
+async function callLovableAI(
+  agentKey: string,
+  message: string,
+  additionalContext?: string
+): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  const apiKey = Deno.env.get("LOVABLE_API_KEY")?.trim();
+  
+  if (!apiKey) {
+    throw new Error(`LOVABLE_API_KEY is not configured for fallback (build: ${BUILD_ID})`);
+  }
+
+  const agentPrompt = AGENT_PROMPTS[agentKey as keyof typeof AGENT_PROMPTS] || "";
+  const fullMessage = `${agentPrompt}\n\n---\n\nUser Request:\n${message}${additionalContext ? `\n\nAdditional Context:\n${additionalContext}` : ""}`;
+
+  console.log(`[Lovable AI] Fallback call for agent: ${agentKey}`);
+  
+  const response = await fetchWithRetry(LOVABLE_AI_GATEWAY_URL, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: LOVABLE_AI_MODEL,
+      messages: [
+        { role: "user", content: fullMessage }
+      ],
+      max_tokens: 8000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[Lovable AI] Error ${response.status}:`, errorText);
+    
+    if (response.status === 429) {
+      throw new Error("AI rate limit exceeded. Please try again in a moment.");
+    }
+    if (response.status === 402) {
+      throw new Error("AI credits exhausted. Please add funds to your workspace.");
+    }
+    throw new Error(`Lovable AI call failed: ${response.status} - ${errorText.slice(0, 200)}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || "";
+  
+  console.log(`[Lovable AI] Response length: ${content.length}`);
+  
+  const toolCalls = detectToolCalls(content);
+  console.log(`[Lovable AI] Tool calls detected: ${toolCalls.length}`);
+
+  return { content, toolCalls };
+}
+
+// ============= PRIMARY LANGDOCK API CALL =============
+
 async function callLangdockAssistant(
   agentKey: string,
   message: string,
@@ -519,7 +585,8 @@ async function callLangdockAssistant(
   const apiKey = apiKeyRaw?.trim().replace(/^Bearer\s+/i, "");
   
   if (!apiKey) {
-    throw new Error(`LANGDOCK_API_KEY is not configured (build: ${BUILD_ID})`);
+    console.log(`[Langdock] No API key, using Lovable AI fallback...`);
+    return callLovableAI(agentKey, message, additionalContext);
   }
 
   const envVarName = AGENT_ASSISTANT_ENV_VARS[agentKey];
@@ -529,82 +596,106 @@ async function callLangdockAssistant(
 
   const assistantId = Deno.env.get(envVarName)?.trim();
   if (!assistantId) {
-    throw new Error(`${envVarName} is not configured for agent: ${agentKey} (build: ${BUILD_ID})`);
+    console.log(`[Langdock] No assistant ID for ${agentKey}, using Lovable AI fallback...`);
+    return callLovableAI(agentKey, message, additionalContext);
   }
 
-  // Get the competitive prompt for this agent
   const agentPrompt = AGENT_PROMPTS[agentKey as keyof typeof AGENT_PROMPTS] || "";
   const fullMessage = `${agentPrompt}\n\n---\n\nUser Request:\n${message}${additionalContext ? `\n\nAdditional Context:\n${additionalContext}` : ""}`;
 
   console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
   
-  const response = await fetchWithRetry(LANGDOCK_ASSISTANT_API_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      assistantId: assistantId,
-      messages: [
-        { role: "user", content: fullMessage }
-      ],
-    }),
-  });
+  try {
+    const response = await fetchWithRetry(LANGDOCK_ASSISTANT_API_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        assistantId: assistantId,
+        messages: [
+          { role: "user", content: fullMessage }
+        ],
+      }),
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[Langdock] Error ${response.status}:`, errorText);
-    
-    if (response.status === 429) {
-      throw new Error("Langdock rate limit exceeded. Please try again in a moment.");
-    }
-    if (response.status === 401) {
-      throw new Error("Langdock API key is invalid. Make sure you're using an Agent API key.");
-    }
-    if (response.status === 402) {
-      throw new Error("Langdock payment required. Please check your account.");
-    }
-    if (response.status === 404) {
-      throw new Error(`Langdock assistant not found: ${assistantId}. Check ${envVarName}.`);
-    }
-    throw new Error(`Langdock assistant call failed: ${response.status} - ${errorText.slice(0, 200)}`);
-  }
-
-  const data = await response.json();
-  console.log(`[Langdock] Raw response keys:`, Object.keys(data));
-  
-  let content = "";
-  
-  if (data.result && Array.isArray(data.result)) {
-    const assistantMessage = data.result.find((m: { role: string }) => m.role === "assistant");
-    
-    if (assistantMessage?.content && Array.isArray(assistantMessage.content)) {
-      const textBlocks = assistantMessage.content
-        .filter((block: { type: string; text?: string }) => block.type === "text" && block.text)
-        .map((block: { text: string }) => block.text);
+    // Check for errors that should trigger fallback
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Langdock] Error ${response.status}:`, errorText);
       
-      if (textBlocks.length > 0) {
-        content = textBlocks.join("\n");
-      } else {
-        content = assistantMessage.content
-          .filter((block: { text?: string }) => block.text)
-          .map((block: { text: string }) => block.text)
-          .join("\n");
+      // These errors trigger fallback to Lovable AI
+      const fallbackErrors = [500, 502, 503, 504, 520, 521, 522, 523, 524];
+      if (fallbackErrors.includes(response.status)) {
+        console.log(`[Langdock] Server error ${response.status}, switching to Lovable AI fallback...`);
+        return callLovableAI(agentKey, message, additionalContext);
       }
-    } else if (typeof assistantMessage?.content === "string") {
-      content = assistantMessage.content;
+      
+      // Non-fallback errors
+      if (response.status === 429) {
+        throw new Error("Rate limit exceeded. Please try again in a moment.");
+      }
+      if (response.status === 401) {
+        console.log(`[Langdock] Auth error, trying Lovable AI fallback...`);
+        return callLovableAI(agentKey, message, additionalContext);
+      }
+      if (response.status === 402) {
+        throw new Error("Payment required. Please check your account.");
+      }
+      if (response.status === 404) {
+        console.log(`[Langdock] Assistant not found, trying Lovable AI fallback...`);
+        return callLovableAI(agentKey, message, additionalContext);
+      }
+      throw new Error(`AI call failed: ${response.status} - ${errorText.slice(0, 200)}`);
     }
-  } else if (data.choices?.[0]?.message?.content) {
-    content = data.choices[0].message.content;
-  }
-  
-  console.log(`[Langdock] Extracted content length: ${content.length}`);
-  
-  const toolCalls = detectToolCalls(content);
-  console.log(`[Langdock] Tool calls detected: ${toolCalls.length}`);
 
-  return { content, toolCalls };
+    const data = await response.json();
+    console.log(`[Langdock] Raw response keys:`, Object.keys(data));
+    
+    let content = "";
+    
+    if (data.result && Array.isArray(data.result)) {
+      const assistantMessage = data.result.find((m: { role: string }) => m.role === "assistant");
+      
+      if (assistantMessage?.content && Array.isArray(assistantMessage.content)) {
+        const textBlocks = assistantMessage.content
+          .filter((block: { type: string; text?: string }) => block.type === "text" && block.text)
+          .map((block: { text: string }) => block.text);
+        
+        if (textBlocks.length > 0) {
+          content = textBlocks.join("\n");
+        } else {
+          content = assistantMessage.content
+            .filter((block: { text?: string }) => block.text)
+            .map((block: { text: string }) => block.text)
+            .join("\n");
+        }
+      } else if (typeof assistantMessage?.content === "string") {
+        content = assistantMessage.content;
+      }
+    } else if (data.choices?.[0]?.message?.content) {
+      content = data.choices[0].message.content;
+    }
+    
+    // If no content from Langdock, fallback
+    if (!content || content.length < 10) {
+      console.log(`[Langdock] Empty response, switching to Lovable AI fallback...`);
+      return callLovableAI(agentKey, message, additionalContext);
+    }
+    
+    console.log(`[Langdock] Extracted content length: ${content.length}`);
+    
+    const toolCalls = detectToolCalls(content);
+    console.log(`[Langdock] Tool calls detected: ${toolCalls.length}`);
+
+    return { content, toolCalls };
+  } catch (error) {
+    // Network errors, timeouts, etc. -> fallback
+    console.error(`[Langdock] Error:`, error);
+    console.log(`[Langdock] Network/timeout error, switching to Lovable AI fallback...`);
+    return callLovableAI(agentKey, message, additionalContext);
+  }
 }
 
 // ============= TOOL CALL DETECTION =============
