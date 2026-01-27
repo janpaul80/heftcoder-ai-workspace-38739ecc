@@ -52,7 +52,7 @@ export function PublishButton({
     { domain: 'workspace.heftcoder.icu', isVerified: true, isPrimary: true },
   ]);
   
-  const publishedUrl = `https://${urlSlug}.lovable.app`;
+  const publishedUrl = `https://${urlSlug}.heftcoder.icu`;
   const primaryDomain = customDomains.find(d => d.isPrimary);
 
   const handlePublish = async () => {
@@ -137,7 +137,7 @@ export function PublishButton({
                   className="border-0 bg-transparent focus-visible:ring-0"
                   placeholder="your-project-name"
                 />
-                <span className="text-sm text-muted-foreground pr-3 whitespace-nowrap">.lovable.app</span>
+                <span className="text-sm text-muted-foreground pr-3 whitespace-nowrap">.heftcoder.icu</span>
               </div>
               <Button
                 variant="ghost"
