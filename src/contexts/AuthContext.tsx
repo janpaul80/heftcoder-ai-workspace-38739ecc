@@ -52,7 +52,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithGoogle = async () => {
-    const redirectUrl = `${window.location.origin}/`;
+    // Use a dedicated callback route so we can reliably exchange the OAuth code for a session
+    // (especially important on mobile and on custom domains).
+    const redirectUrl = `${window.location.origin}/auth/callback`;
     console.log('Starting Google OAuth with redirect:', redirectUrl);
     
     const { error } = await supabase.auth.signInWithOAuth({
