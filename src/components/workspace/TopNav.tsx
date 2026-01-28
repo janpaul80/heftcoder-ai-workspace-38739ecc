@@ -1,13 +1,24 @@
 import { useState } from 'react';
-import { FolderOpen, Download, Menu, X } from 'lucide-react';
+import { FolderOpen, Download, Menu, LogOut, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import hcIcon from '@/assets/hc-icon.png';
 import type { UserTier } from '@/types/workspace';
 import { GitHubPopover } from './GitHubPopover';
 import { PublishButton } from './PublishButton';
 import { ShareButton } from './ShareButton';
-import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 interface TopNavProps {
   onFileExplorerOpen: () => void;
@@ -18,6 +29,49 @@ interface TopNavProps {
 export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const canDownload = userTier === 'pro' || userTier === 'studio';
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success('Signed out successfully');
+      navigate('/auth', { replace: true });
+    } catch (error) {
+      toast.error('Failed to sign out');
+    }
+  };
+
+  const userInitials = user?.email?.charAt(0).toUpperCase() || 'U';
+  const userAvatar = user?.user_metadata?.avatar_url;
+
+  const UserMenu = () => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="rounded-full">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={userAvatar} alt={user?.email || 'User'} />
+            <AvatarFallback className="bg-primary text-primary-foreground text-sm">
+              {userInitials}
+            </AvatarFallback>
+          </Avatar>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-1">
+            <p className="text-sm font-medium">{user?.user_metadata?.full_name || 'User'}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:text-destructive">
+          <LogOut className="h-4 w-4 mr-2" />
+          Sign Out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   // Mobile Navigation
   if (isMobile) {
@@ -45,7 +99,18 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
             <SheetContent side="right" className="w-[280px] p-0">
               <div className="flex flex-col h-full">
                 <div className="flex items-center justify-between p-4 border-b border-border">
-                  <span className="font-semibold">Menu</span>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={userAvatar} alt={user?.email || 'User'} />
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        {userInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex flex-col">
+                      <span className="font-medium text-sm">{user?.user_metadata?.full_name || 'User'}</span>
+                      <span className="text-xs text-muted-foreground truncate max-w-[160px]">{user?.email}</span>
+                    </div>
+                  </div>
                 </div>
                 
                 <div className="flex-1 p-4 space-y-2">
@@ -79,6 +144,20 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
                       repoName="janpaul80/heftcoder-project"
                     />
                   </div>
+                </div>
+
+                <div className="p-4 border-t border-border">
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start h-12 text-base text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      handleSignOut();
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    <LogOut className="h-5 w-5 mr-3" />
+                    Sign Out
+                  </Button>
                 </div>
               </div>
             </SheetContent>
@@ -127,6 +206,8 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
         </Button>
 
         <PublishButton projectName="landing-page" />
+        
+        <UserMenu />
       </div>
     </header>
   );
