@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
+import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 import heftcoderLogo from '@/assets/heftcoder-logo.png';
 
 export default function Auth() {
@@ -175,7 +176,10 @@ export default function Auth() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signin-password">Password</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="signin-password">Password</Label>
+                    <ForgotPasswordDialog />
+                  </div>
                   <Input
                     id="signin-password"
                     type="password"
