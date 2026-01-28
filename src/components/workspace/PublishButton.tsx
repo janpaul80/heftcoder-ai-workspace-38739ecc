@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Globe, Check, Copy, ExternalLink, Star, ArrowUpRight, Shield, AlertCircle, Eye, ChevronDown, Edit2, Settings } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Globe, Copy, Star, ArrowUpRight, Shield, AlertCircle, Eye, ChevronDown, Edit2, Settings, Loader2, Check, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,75 +16,179 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
+import type { GeneratedProject } from '@/types/workspace';
 
 interface PublishButtonProps {
   projectName?: string;
-  isPublished?: boolean;
-  onPublish?: () => void;
+  project?: GeneratedProject | null;
 }
 
-function generateUserId(): string {
-  return Math.random().toString(36).substring(2, 8) + Math.floor(Math.random() * 10000);
-}
-
-interface CustomDomain {
-  domain: string;
-  isVerified: boolean;
-  isPrimary: boolean;
+interface PublishedProject {
+  id: string;
+  slug: string;
+  is_public: boolean;
+  visitor_count: number;
+  published_at: string;
 }
 
 export function PublishButton({ 
   projectName = 'my-project',
-  isPublished = false,
-  onPublish 
+  project
 }: PublishButtonProps) {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [published, setPublished] = useState(isPublished);
-  const [userId] = useState(() => generateUserId());
-  const [urlSlug, setUrlSlug] = useState('heftcoder-workspace');
+  const [urlSlug, setUrlSlug] = useState('');
   const [urlAccess, setUrlAccess] = useState<'anyone' | 'private'>('anyone');
-  const [securityStatus, setSecurityStatus] = useState<'scanning' | 'updating' | 'done'>('done');
-  const [securityErrors, setSecurityErrors] = useState(1);
-  const [visitors] = useState(48);
-  
-  const [customDomains, setCustomDomains] = useState<CustomDomain[]>([
-    { domain: 'workspace.heftcoder.icu', isVerified: true, isPrimary: true },
-  ]);
-  
-  const publishedUrl = `https://${urlSlug}.heftcoder.icu`;
-  const primaryDomain = customDomains.find(d => d.isPrimary);
+  const [publishedData, setPublishedData] = useState<PublishedProject | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [slugError, setSlugError] = useState<string | null>(null);
 
-  const handlePublish = async () => {
-    setPublishing(true);
-    setSecurityStatus('updating');
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setPublishing(false);
-    setPublished(true);
-    setSecurityStatus('done');
-    onPublish?.();
-    toast.success('Your project has been published!');
+  // Generate default slug from project name
+  useEffect(() => {
+    if (project?.name && !urlSlug) {
+      const defaultSlug = project.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .substring(0, 50);
+      setUrlSlug(defaultSlug || 'my-project');
+    }
+  }, [project?.name, urlSlug]);
+
+  // Check if project is already published when dialog opens
+  useEffect(() => {
+    if (open && user && project) {
+      checkExistingPublication();
+    }
+  }, [open, user, project]);
+
+  const checkExistingPublication = async () => {
+    if (!user || !project) return;
+    
+    setLoading(true);
+    try {
+      // Check if this user has a published version
+      const { data, error } = await supabase
+        .from('published_projects')
+        .select('id, slug, is_public, visitor_count, published_at')
+        .eq('user_id', user.id)
+        .eq('name', project.name)
+        .maybeSingle();
+
+      if (data && !error) {
+        setPublishedData(data);
+        setUrlSlug(data.slug);
+        setUrlAccess(data.is_public ? 'anyone' : 'private');
+      }
+    } catch (err) {
+      console.error('Error checking publication:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const copyUrl = (url: string) => {
-    navigator.clipboard.writeText(url);
+  const validateSlug = async (slug: string): Promise<boolean> => {
+    if (!slug || slug.length < 3) {
+      setSlugError('Slug must be at least 3 characters');
+      return false;
+    }
+    
+    if (!/^[a-z0-9-]+$/.test(slug)) {
+      setSlugError('Only lowercase letters, numbers, and hyphens allowed');
+      return false;
+    }
+
+    // Check if slug is taken by another user
+    const { data } = await supabase
+      .from('published_projects')
+      .select('id, user_id')
+      .eq('slug', slug)
+      .maybeSingle();
+
+    if (data && data.user_id !== user?.id) {
+      setSlugError('This URL is already taken');
+      return false;
+    }
+
+    setSlugError(null);
+    return true;
+  };
+
+  const handlePublish = async () => {
+    if (!user) {
+      toast.error('Please sign in to publish');
+      return;
+    }
+
+    if (!project || !project.previewHtml) {
+      toast.error('No project to publish. Generate a project first!');
+      return;
+    }
+
+    const isValid = await validateSlug(urlSlug);
+    if (!isValid) return;
+
+    setPublishing(true);
+
+    try {
+      const projectData = {
+        user_id: user.id,
+        slug: urlSlug,
+        name: project.name,
+        html_content: project.previewHtml,
+        original_prompt: '', // Could be passed from parent
+        project_type: project.type,
+        is_public: urlAccess === 'anyone',
+        published_at: new Date().toISOString(),
+      };
+
+      if (publishedData) {
+        // Update existing
+        const { error } = await supabase
+          .from('published_projects')
+          .update(projectData)
+          .eq('id', publishedData.id);
+
+        if (error) throw error;
+        toast.success('Project updated successfully!');
+      } else {
+        // Insert new
+        const { data, error } = await supabase
+          .from('published_projects')
+          .insert(projectData)
+          .select('id, slug, is_public, visitor_count, published_at')
+          .single();
+
+        if (error) throw error;
+        setPublishedData(data);
+        toast.success('Project published successfully!');
+      }
+    } catch (err: any) {
+      console.error('Publish error:', err);
+      if (err.code === '23505') {
+        setSlugError('This URL is already taken');
+      } else {
+        toast.error(err.message || 'Failed to publish');
+      }
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const publishedUrl = `${window.location.origin}/p/${urlSlug}`;
+  const hasProject = project && project.previewHtml;
+  const isPublished = !!publishedData;
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(publishedUrl);
     toast.success('URL copied to clipboard!');
   };
 
-  const handleEditDomain = () => {
-    toast.info('Opening domain editor...');
-  };
-
-  const handleManageDomains = () => {
-    toast.info('Opening domain management...');
-  };
-
-  const handleReviewSecurity = () => {
-    setSecurityStatus('scanning');
-    setTimeout(() => {
-      setSecurityStatus('done');
-      toast.success('Security scan complete');
-    }, 2000);
+  const openPublishedSite = () => {
+    window.open(publishedUrl, '_blank');
   };
 
   return (
@@ -104,172 +208,148 @@ export function PublishButton({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <DialogTitle className="text-foreground">Publish your app</DialogTitle>
-              {published && (
-                <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-500 rounded">
+              {isPublished && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-500 rounded flex items-center gap-1">
+                  <Check className="h-3 w-3" />
                   Live
                 </span>
               )}
             </div>
-            {published && (
+            {isPublished && publishedData && (
               <div className="flex items-center gap-1 text-sm text-muted-foreground">
                 <Eye className="h-4 w-4" />
-                <span>{visitors} Visitors</span>
+                <span>{publishedData.visitor_count} Visitors</span>
               </div>
             )}
           </div>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
-          {/* Published URL */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium text-foreground">Published URL</label>
-              <span className="text-muted-foreground cursor-help" title="Your public URL">ⓘ</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Enter your URL, or leave empty to auto-generate.
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : !hasProject ? (
+          <div className="py-8 text-center">
+            <Globe className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              Generate a project first before publishing.
             </p>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-secondary rounded-lg">
-                <Input
-                  value={urlSlug}
-                  onChange={(e) => setUrlSlug(e.target.value)}
-                  className="border-0 bg-transparent focus-visible:ring-0"
-                  placeholder="your-project-name"
-                />
-                <span className="text-sm text-muted-foreground pr-3 whitespace-nowrap">.heftcoder.icu</span>
+          </div>
+        ) : (
+          <div className="space-y-4 py-2">
+            {/* Published URL Input */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-sm font-medium text-foreground">Published URL</label>
+                <span className="text-muted-foreground cursor-help text-xs" title="Your public URL">ⓘ</span>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => copyUrl(publishedUrl)}
-                className="shrink-0"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Custom Domain */}
-          {primaryDomain && (
-            <div className="flex items-center gap-2 p-3 bg-secondary rounded-lg">
-              <Globe className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-foreground flex-1">{primaryDomain.domain}</span>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-6 w-6"
-                onClick={() => {
-                  const newDomains = customDomains.map(d => ({
-                    ...d,
-                    isPrimary: d.domain === primaryDomain.domain ? !d.isPrimary : false,
-                  }));
-                  setCustomDomains(newDomains);
-                }}
-              >
-                <Star className={`h-4 w-4 ${primaryDomain.isPrimary ? 'text-yellow-500 fill-yellow-500' : 'text-muted-foreground'}`} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => window.open(`https://${primaryDomain.domain}`, '_blank')}
-              >
-                <ArrowUpRight className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-
-          {/* Domain management buttons */}
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-border text-sm"
-              onClick={handleEditDomain}
-            >
-              <Edit2 className="h-3 w-3 mr-1" />
-              Edit domain
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-border text-sm"
-              onClick={handleManageDomains}
-            >
-              <Settings className="h-3 w-3 mr-1" />
-              Manage domains
-            </Button>
-          </div>
-
-          {/* URL Access */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-foreground">Who can visit the URL?</span>
-              <span className="text-muted-foreground cursor-help" title="Control who can access your published app">ⓘ</span>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="border-border gap-1">
-                  <span className="capitalize">{urlAccess}</span>
-                  <ChevronDown className="h-3 w-3" />
+              <p className="text-xs text-muted-foreground">
+                Choose a unique URL for your published project.
+              </p>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 flex items-center bg-secondary rounded-lg">
+                  <Input
+                    value={urlSlug}
+                    onChange={(e) => {
+                      setUrlSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+                      setSlugError(null);
+                    }}
+                    className="border-0 bg-transparent focus-visible:ring-0"
+                    placeholder="your-project-name"
+                  />
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={copyUrl}
+                  className="shrink-0"
+                  title="Copy URL"
+                >
+                  <Copy className="h-4 w-4" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="bg-card border-border">
-                <DropdownMenuItem onClick={() => setUrlAccess('anyone')}>
-                  Anyone
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setUrlAccess('private')}>
-                  Private
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* Website info section */}
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-foreground">Website info</h4>
-          </div>
-
-          {/* Security status */}
-          <div className="flex items-center justify-between p-3 bg-secondary rounded-lg">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Shield className={`h-4 w-4 ${securityStatus === 'scanning' ? 'animate-pulse text-blue-500' : 'text-muted-foreground'}`} />
-                <span className="text-sm text-foreground">Security Scan</span>
+                {isPublished && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={openPublishedSite}
+                    className="shrink-0"
+                    title="Open in new tab"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-sm ${securityStatus === 'updating' ? 'text-blue-500' : 'text-muted-foreground'}`}>
-                  {securityStatus === 'updating' ? '○ Updating' : securityStatus === 'scanning' ? '○ Scanning...' : ''}
-                </span>
-              </div>
+              {slugError && (
+                <p className="text-xs text-destructive">{slugError}</p>
+              )}
+              <p className="text-xs text-muted-foreground truncate">
+                {publishedUrl}
+              </p>
             </div>
-            {securityErrors > 0 && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-destructive/20 text-destructive rounded text-xs font-medium">
-                <AlertCircle className="h-3 w-3" />
-                {securityErrors} Error{securityErrors > 1 ? 's' : ''}
-              </div>
-            )}
-          </div>
 
-          {/* Action buttons */}
-          <div className="flex gap-2 pt-2">
+            {/* URL Access Control */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-foreground">Who can visit?</span>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="border-border gap-1">
+                    <span className="capitalize">{urlAccess}</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="bg-card border-border">
+                  <DropdownMenuItem onClick={() => setUrlAccess('anyone')}>
+                    Anyone
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setUrlAccess('private')}>
+                    Private
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Project Info */}
+            <div className="p-3 bg-secondary rounded-lg space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Project</span>
+                <span className="text-foreground font-medium">{project.name}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Type</span>
+                <span className="text-foreground capitalize">{project.type}</span>
+              </div>
+              {isPublished && publishedData && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Published</span>
+                  <span className="text-foreground">
+                    {new Date(publishedData.published_at).toLocaleDateString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Publish Button */}
             <Button
-              variant="outline"
-              className="flex-1 border-blue-500 text-blue-500 hover:bg-blue-500/10"
-              onClick={handleReviewSecurity}
-            >
-              Review security
-            </Button>
-            <Button
-              className="flex-1 bg-primary hover:bg-primary/90"
+              className="w-full bg-primary hover:bg-primary/90"
               onClick={handlePublish}
-              disabled={publishing}
+              disabled={publishing || !urlSlug}
             >
-              {publishing ? 'Updating...' : 'Update'}
+              {publishing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {isPublished ? 'Updating...' : 'Publishing...'}
+                </>
+              ) : (
+                <>
+                  <Globe className="h-4 w-4 mr-2" />
+                  {isPublished ? 'Update' : 'Publish'}
+                </>
+              )}
             </Button>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );

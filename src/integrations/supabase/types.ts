@@ -67,6 +67,54 @@ export type Database = {
           },
         ]
       }
+      published_projects: {
+        Row: {
+          created_at: string
+          custom_domain: string | null
+          html_content: string
+          id: string
+          is_public: boolean | null
+          name: string
+          original_prompt: string | null
+          project_type: string | null
+          published_at: string
+          slug: string
+          updated_at: string
+          user_id: string
+          visitor_count: number | null
+        }
+        Insert: {
+          created_at?: string
+          custom_domain?: string | null
+          html_content: string
+          id?: string
+          is_public?: boolean | null
+          name: string
+          original_prompt?: string | null
+          project_type?: string | null
+          published_at?: string
+          slug: string
+          updated_at?: string
+          user_id: string
+          visitor_count?: number | null
+        }
+        Update: {
+          created_at?: string
+          custom_domain?: string | null
+          html_content?: string
+          id?: string
+          is_public?: boolean | null
+          name?: string
+          original_prompt?: string | null
+          project_type?: string | null
+          published_at?: string
+          slug?: string
+          updated_at?: string
+          user_id?: string
+          visitor_count?: number | null
+        }
+        Relationships: []
+      }
       templates: {
         Row: {
           category: string
