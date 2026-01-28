@@ -1322,26 +1322,93 @@ CRITICAL: Output complete HTML code in a \`\`\`html code block. Make it STUNNING
 
     this.send({ type: "agents_init", agents: this.agentTasks });
 
-    const refineMessage = `Refine this existing code based on user feedback.
+    const refineMessage = `You are refining an existing landing page based on user feedback.
+
+IMPORTANT: You MUST output the complete updated HTML code wrapped in a \`\`\`html code block.
 
 CURRENT CODE:
+\`\`\`html
 ${currentCode}
+\`\`\`
 
 USER FEEDBACK:
-${feedback}
+"${feedback}"
 
 ORIGINAL PROJECT:
 ${plan.projectName} - ${plan.description}
 
-Update the code to incorporate the feedback while keeping the overall structure. Output complete HTML.`;
+Instructions:
+1. Read the current code carefully
+2. Apply the user's feedback to improve the design
+3. Output the COMPLETE updated HTML in a \`\`\`html code block
+4. Preserve all existing sections unless specifically asked to change them
+5. Enhance based on feedback while maintaining the design system
+
+Output ONLY the complete HTML code wrapped in \`\`\`html ... \`\`\` - no explanations needed.`;
 
     try {
       const { content } = await callLangdockAssistant("frontend", refineMessage);
       
+      console.log("[Refine] AI response length:", content.length);
+      
       let files = extractCodeBlocks(content);
+      
+      // If no code blocks found, try to extract raw HTML
       if (files.length === 0) {
-        // Keep the original code if refinement fails
-        throw new Error("Refinement did not produce updated code. Please try different feedback.");
+        console.log("[Refine] No code blocks found, trying raw HTML extraction...");
+        
+        // Try to find HTML content even without code fences
+        const htmlMatch = content.match(/<!DOCTYPE html[\s\S]*<\/html>/i);
+        if (htmlMatch) {
+          console.log("[Refine] Found raw HTML content");
+          files = [{
+            filename: "index.html",
+            path: "index.html",
+            content: htmlMatch[0].trim(),
+            language: "html"
+          }];
+        }
+      }
+      
+      // If still no files, apply the feedback directly to original code as fallback
+      if (files.length === 0) {
+        console.log("[Refine] Using enhanced fallback - modifying original code");
+        
+        // Use the original code but let user know we couldn't apply AI changes
+        this.send({
+          type: "agent_message",
+          agent: "Frontend",
+          message: `I couldn't generate refined code for "${feedback}". Try being more specific, like:\n- "Make the headline text larger and add a gradient"\n- "Change the button color to blue"\n- "Add more spacing between sections"`,
+        });
+        
+        // Still return the original so user doesn't lose their work
+        files = [{
+          filename: "index.html",
+          path: "index.html",
+          content: currentCode,
+          language: "html"
+        }];
+        
+        this.state.files = files;
+        
+        for (const file of files) {
+          this.send({ type: "file_generated", agent: "frontend", file });
+        }
+        
+        const htmlFile = files.find(f => f.language === "html");
+        if (htmlFile) {
+          this.send({ type: "preview_ready", html: htmlFile.content });
+        }
+        
+        this.agentTasks["frontend"].status = "complete";
+        
+        this.send({
+          type: "complete",
+          agents: this.agentTasks,
+          summary: `⚠️ **Could not apply refinement.** Try a more specific request. Your original design is preserved.`,
+        });
+        
+        return;
       }
 
       this.state.files = files;
@@ -1364,9 +1431,30 @@ Update the code to incorporate the feedback while keeping the overall structure.
       });
 
     } catch (err) {
+      console.error("[Refine] Error:", err);
+      
+      // On error, preserve original code instead of failing completely
+      const files = [{
+        filename: "index.html",
+        path: "index.html",
+        content: currentCode,
+        language: "html"
+      }];
+      
+      this.state.files = files;
+      
+      for (const file of files) {
+        this.send({ type: "file_generated", agent: "frontend", file });
+      }
+      
+      this.send({ type: "preview_ready", html: currentCode });
+      
+      this.agentTasks["frontend"].status = "complete";
+      
       this.send({
-        type: "error",
-        message: err instanceof Error ? err.message : "Refinement failed",
+        type: "complete",
+        agents: this.agentTasks,
+        summary: `⚠️ **Refinement had an issue.** Your original design is preserved. Try a different request.`,
       });
     }
   }
