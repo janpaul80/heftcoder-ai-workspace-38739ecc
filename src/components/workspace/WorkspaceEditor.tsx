@@ -268,6 +268,7 @@ export function WorkspaceEditor() {
           onFileExplorerOpen={() => setFileExplorerOpen(true)}
           userTier={userTier}
           isMobile={true}
+          project={displayProject}
         />
 
         {/* Mobile Tab Bar */}
@@ -359,6 +360,7 @@ export function WorkspaceEditor() {
       <TopNav 
         onFileExplorerOpen={() => setFileExplorerOpen(true)}
         userTier={userTier}
+        project={displayProject}
       />
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">

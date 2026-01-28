@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import hcIcon from '@/assets/hc-icon.png';
-import type { UserTier } from '@/types/workspace';
+import type { UserTier, GeneratedProject } from '@/types/workspace';
 import { GitHubPopover } from './GitHubPopover';
 import { PublishButton } from './PublishButton';
 import { ShareButton } from './ShareButton';
@@ -24,9 +24,10 @@ interface TopNavProps {
   onFileExplorerOpen: () => void;
   userTier: UserTier;
   isMobile?: boolean;
+  project?: GeneratedProject | null;
 }
 
-export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) {
+export function TopNav({ onFileExplorerOpen, userTier, isMobile, project }: TopNavProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const canDownload = userTier === 'pro' || userTier === 'studio';
   const { user, signOut } = useAuth();
@@ -83,8 +84,8 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
         </div>
 
         <div className="flex items-center gap-1">
-          <ShareButton projectName="landing-page" />
-          <PublishButton projectName="landing-page" />
+          <ShareButton projectName={project?.name || "landing-page"} />
+          <PublishButton projectName={project?.name || "landing-page"} project={project} />
           
           <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
             <SheetTrigger asChild>
@@ -188,7 +189,7 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
       </div>
 
       <div className="flex items-center gap-2">
-        <ShareButton projectName="landing-page" />
+        <ShareButton projectName={project?.name || "landing-page"} />
         
         <GitHubPopover 
           isConnected={true}
@@ -205,7 +206,7 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile }: TopNavProps) 
           <Download className="h-5 w-5" />
         </Button>
 
-        <PublishButton projectName="landing-page" />
+        <PublishButton projectName={project?.name || "landing-page"} project={project} />
         
         <UserMenu />
       </div>
