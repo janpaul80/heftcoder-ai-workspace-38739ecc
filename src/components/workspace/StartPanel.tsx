@@ -38,7 +38,7 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, on
       {/* Header */}
       <div className={cn("border-b border-border", isMobile ? "p-4" : "p-6")}>
         <h2 className={cn("font-semibold text-foreground", isMobile ? "text-lg" : "text-xl")}>
-          One prompt. A $5,000-quality website.
+          One prompt. We build it.
         </h2>
         <p className={cn("text-muted-foreground mt-1", isMobile ? "text-sm" : "text-sm")}>
           Describe what you want. We plan, design, and build it.
