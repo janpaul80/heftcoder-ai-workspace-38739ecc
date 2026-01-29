@@ -71,10 +71,14 @@ Deno.serve(async (req) => {
       .eq("id", project.id)
       .then(() => {});
 
-    // Defensive branding rewrite (for already-published pages created before the fix)
+    // Use stored SEO fields or fall back to defaults
     const brandName = "HeftCoder";
-    const description = `Built with ${brandName}. Create and publish landing pages in minutes.`;
-    const safeTitle = project?.name ? `${project.name} — ${brandName}` : brandName;
+    const storedTitle = project.seo_title?.trim();
+    const storedDesc = project.seo_description?.trim();
+    const safeTitle = storedTitle 
+      ? `${storedTitle} — ${brandName}` 
+      : (project?.name ? `${project.name} — ${brandName}` : brandName);
+    const description = storedDesc || `Built with ${brandName}. Create and publish landing pages in minutes.`;
 
     let html = String(project.html_content ?? "");
     html = html
