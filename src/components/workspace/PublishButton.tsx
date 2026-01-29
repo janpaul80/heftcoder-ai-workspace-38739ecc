@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import type { GeneratedProject } from '@/types/workspace';
+import { sanitizePublishedHtml } from '@/lib/publishing/sanitizePublishedHtml';
 
 interface PublishButtonProps {
   projectName?: string;
@@ -134,11 +135,16 @@ export function PublishButton({
     setPublishing(true);
 
     try {
+      const brandedHtml = sanitizePublishedHtml(project.previewHtml, {
+        title: project.name,
+        brandName: 'HeftCoder',
+      });
+
       const projectData = {
         user_id: user.id,
         slug: urlSlug,
         name: project.name,
-        html_content: project.previewHtml,
+        html_content: brandedHtml,
         original_prompt: '', // Could be passed from parent
         project_type: project.type,
         is_public: urlAccess === 'anyone',
