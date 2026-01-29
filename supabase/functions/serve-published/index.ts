@@ -71,8 +71,31 @@ Deno.serve(async (req) => {
       .eq("id", project.id)
       .then(() => {});
 
+    // Defensive branding rewrite (for already-published pages created before the fix)
+    const brandName = "HeftCoder";
+    const description = `Built with ${brandName}. Create and publish landing pages in minutes.`;
+    const safeTitle = project?.name ? `${project.name} — ${brandName}` : brandName;
+
+    let html = String(project.html_content ?? "");
+    html = html
+      .replace(/<title>[\s\S]*?<\/title>/i, `<title>${safeTitle}</title>`)
+      .replace(
+        /<meta\s+name=["']description["']\s+content=["'][^"']*["']\s*\/?>/i,
+        `<meta name="description" content="${description}" />`,
+      )
+      .replace(
+        /<meta\s+property=["']og:title["']\s+content=["'][^"']*["']\s*\/?>/i,
+        `<meta property="og:title" content="${safeTitle}" />`,
+      )
+      .replace(
+        /<meta\s+property=["']og:description["']\s+content=["'][^"']*["']\s*\/?>/i,
+        `<meta property="og:description" content="${description}" />`,
+      )
+      .replace(/Lovable App/gi, brandName)
+      .replace(/Lovable Generated Project/gi, description);
+
     // Return the HTML content
-    return new Response(project.html_content, {
+    return new Response(html, {
       status: 200,
       headers: { 
         ...corsHeaders, 
