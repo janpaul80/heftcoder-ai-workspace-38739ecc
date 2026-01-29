@@ -42,7 +42,7 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, on
         </h2>
         <p className={cn("text-muted-foreground mt-1", isMobile ? "text-sm" : "text-sm")}>
           Describe what you want. We plan, design, and build it.
-          <span className="block text-xs mt-1">Web only • Dark mode first • Premium fonts & real imagery</span>
+          <span className="block text-xs mt-1"></span>
         </p>
       </div>
 
