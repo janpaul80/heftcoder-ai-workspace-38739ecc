@@ -78,6 +78,8 @@ export type Database = {
           original_prompt: string | null
           project_type: string | null
           published_at: string
+          seo_description: string | null
+          seo_title: string | null
           slug: string
           updated_at: string
           user_id: string
@@ -93,6 +95,8 @@ export type Database = {
           original_prompt?: string | null
           project_type?: string | null
           published_at?: string
+          seo_description?: string | null
+          seo_title?: string | null
           slug: string
           updated_at?: string
           user_id: string
@@ -108,6 +112,8 @@ export type Database = {
           original_prompt?: string | null
           project_type?: string | null
           published_at?: string
+          seo_description?: string | null
+          seo_title?: string | null
           slug?: string
           updated_at?: string
           user_id?: string

@@ -32,6 +32,8 @@ interface PublishedProject {
   is_public: boolean;
   visitor_count: number;
   published_at: string;
+  seo_title: string | null;
+  seo_description: string | null;
 }
 
 export function PublishButton({ 
@@ -46,6 +48,8 @@ export function PublishButton({
   const [publishedData, setPublishedData] = useState<PublishedProject | null>(null);
   const [loading, setLoading] = useState(false);
   const [slugError, setSlugError] = useState<string | null>(null);
+  const [seoTitle, setSeoTitle] = useState('');
+  const [seoDescription, setSeoDescription] = useState('');
 
   // Generate default slug from project name
   useEffect(() => {
@@ -74,7 +78,7 @@ export function PublishButton({
       // Check if this user has a published version
       const { data, error } = await supabase
         .from('published_projects')
-        .select('id, slug, is_public, visitor_count, published_at')
+        .select('id, slug, is_public, visitor_count, published_at, seo_title, seo_description')
         .eq('user_id', user.id)
         .eq('name', project.name)
         .maybeSingle();
@@ -83,6 +87,8 @@ export function PublishButton({
         setPublishedData(data);
         setUrlSlug(data.slug);
         setUrlAccess(data.is_public ? 'anyone' : 'private');
+        setSeoTitle(data.seo_title || '');
+        setSeoDescription(data.seo_description || '');
       }
     } catch (err) {
       console.error('Error checking publication:', err);
@@ -135,9 +141,13 @@ export function PublishButton({
     setPublishing(true);
 
     try {
+      const finalTitle = seoTitle.trim() || project.name;
+      const finalDescription = seoDescription.trim() || undefined;
+      
       const brandedHtml = sanitizePublishedHtml(project.previewHtml, {
-        title: project.name,
+        title: finalTitle,
         brandName: 'HeftCoder',
+        description: finalDescription,
       });
 
       const projectData = {
@@ -149,6 +159,8 @@ export function PublishButton({
         project_type: project.type,
         is_public: urlAccess === 'anyone',
         published_at: new Date().toISOString(),
+        seo_title: seoTitle.trim() || null,
+        seo_description: seoDescription.trim() || null,
       };
 
       if (publishedData) {
@@ -165,7 +177,7 @@ export function PublishButton({
         const { data, error } = await supabase
           .from('published_projects')
           .insert(projectData)
-          .select('id, slug, is_public, visitor_count, published_at')
+          .select('id, slug, is_public, visitor_count, published_at, seo_title, seo_description')
           .single();
 
         if (error) throw error;
@@ -291,6 +303,33 @@ export function PublishButton({
               <p className="text-xs text-muted-foreground truncate">
                 {publishedUrl}
               </p>
+            </div>
+
+            {/* SEO Fields */}
+            <div className="space-y-3 p-3 bg-secondary/50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground">Share Preview (SEO)</span>
+                <span className="text-muted-foreground cursor-help text-xs" title="Customize how your page appears when shared on social media">ⓘ</span>
+              </div>
+              <div className="space-y-2">
+                <Input
+                  value={seoTitle}
+                  onChange={(e) => setSeoTitle(e.target.value)}
+                  className="bg-background border-border"
+                  placeholder={`Title (default: ${project.name})`}
+                  maxLength={60}
+                />
+                <textarea
+                  value={seoDescription}
+                  onChange={(e) => setSeoDescription(e.target.value)}
+                  className="w-full min-h-[60px] p-2 text-sm bg-background border border-border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Description for social sharing (max 160 chars)"
+                  maxLength={160}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {seoTitle.length}/60 title · {seoDescription.length}/160 description
+                </p>
+              </div>
             </div>
 
             {/* URL Access Control */}
