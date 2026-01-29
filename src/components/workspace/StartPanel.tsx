@@ -92,7 +92,7 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, on
 
       {/* Templates / History */}
       <div className="flex-1 overflow-hidden min-h-0">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "templates" | "history")} className="h-full flex flex-col">
           <TabsList className={cn("bg-secondary", isMobile ? "mx-4 mt-3" : "mx-6 mt-4")}>
             <TabsTrigger value="templates" className={cn("gap-1.5", isMobile && "text-xs")}>
               <Sparkles className={cn(isMobile ? "h-3 w-3" : "h-4 w-4")} />
