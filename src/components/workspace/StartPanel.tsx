@@ -16,18 +16,18 @@ interface StartPanelProps {
 }
 
 const QUICK_START_PROMPTS = [
-  "Create a modern portfolio website with dark theme",
-  "Build a SaaS pricing page with 3 tiers",
-  "Design an e-commerce product page with reviews",
-  "Make a restaurant landing page with menu section",
+  "Build a SaaS dashboard with analytics and user management",
+  "Create a modern e-commerce store with cart and checkout",
+  "Design a startup landing page with pricing tiers",
+  "Make a React web app with authentication and database",
 ];
 
 // Shorter prompts for mobile
 const QUICK_START_PROMPTS_SHORT = [
-  "Modern portfolio site",
-  "SaaS pricing page",
-  "E-commerce product page",
-  "Restaurant landing page",
+  "SaaS dashboard",
+  "E-commerce store",
+  "Landing page",
+  "React web app",
 ];
 
 export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, onSendPrompt }: StartPanelProps) {
@@ -43,12 +43,12 @@ export function StartPanel({ onSelectTemplate, onSelectProject, onStartBlank, on
       {/* Header */}
       <div className={cn("border-b border-border", isMobile ? "p-4" : "p-6")}>
         <h2 className={cn("font-semibold text-foreground mb-1", isMobile ? "text-lg" : "text-xl")}>
-          What would you like to build?
+          One prompt. Any project.
         </h2>
         <p className={cn("text-muted-foreground", isMobile && "text-sm")}>
           {isMobile 
-            ? "Start from a template or describe your project."
-            : "Start from a template, continue a project, or describe what you want to create."
+            ? "Web apps, SaaS, landing pages, e-commerce & more."
+            : "Build web apps, SaaS platforms, landing pages, e-commerce, React, Next.js — native apps coming soon."
           }
         </p>
       </div>

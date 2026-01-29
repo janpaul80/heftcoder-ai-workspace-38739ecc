@@ -17,28 +17,26 @@ import { cn } from '@/lib/utils';
 const CATEGORIES = [
   { id: 'all', label: 'All', icon: Globe },
   { id: 'saas', label: 'SaaS', icon: Rocket },
-  { id: 'portfolio', label: 'Portfolio', icon: User },
+  { id: 'landing', label: 'Landing', icon: Globe },
   { id: 'ecommerce', label: 'E-commerce', icon: ShoppingBag },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'blog', label: 'Blog', icon: FileText },
+  { id: 'webapp', label: 'Web App', icon: LayoutDashboard },
+  { id: 'static', label: 'Static', icon: FileText },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
   saas: 'from-blue-500/20 to-indigo-500/20',
-  portfolio: 'from-purple-500/20 to-pink-500/20',
+  landing: 'from-purple-500/20 to-pink-500/20',
   ecommerce: 'from-green-500/20 to-emerald-500/20',
-  dashboard: 'from-orange-500/20 to-amber-500/20',
-  blog: 'from-cyan-500/20 to-teal-500/20',
-  landing: 'from-red-500/20 to-rose-500/20',
+  webapp: 'from-orange-500/20 to-amber-500/20',
+  static: 'from-cyan-500/20 to-teal-500/20',
 };
 
 const CATEGORY_ICONS: Record<string, typeof Rocket> = {
   saas: Rocket,
-  portfolio: User,
-  ecommerce: ShoppingBag,
-  dashboard: LayoutDashboard,
-  blog: FileText,
   landing: Globe,
+  ecommerce: ShoppingBag,
+  webapp: LayoutDashboard,
+  static: FileText,
 };
 
 interface TemplateGalleryProps {
