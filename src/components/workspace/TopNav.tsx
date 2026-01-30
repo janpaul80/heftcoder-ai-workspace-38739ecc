@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FolderOpen, Download, Menu, LogOut, User } from 'lucide-react';
+import { FolderOpen, Download, Menu, LogOut, User, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -16,6 +16,7 @@ import type { UserTier, GeneratedProject } from '@/types/workspace';
 import { GitHubPopover } from './GitHubPopover';
 import { PublishButton } from './PublishButton';
 import { ShareButton } from './ShareButton';
+import { SettingsDialog } from './SettingsDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -138,6 +139,11 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile, project }: TopN
                       <span className="ml-auto text-xs text-muted-foreground">Pro</span>
                     )}
                   </Button>
+
+                  {/* Settings in mobile menu - uses dialog trigger */}
+                  <div className="py-2">
+                    <SettingsDialog />
+                  </div>
                   
                   <div className="pt-4 border-t border-border mt-4">
                     <GitHubPopover 
@@ -205,6 +211,8 @@ export function TopNav({ onFileExplorerOpen, userTier, isMobile, project }: TopN
         >
           <Download className="h-5 w-5" />
         </Button>
+
+        <SettingsDialog />
 
         <PublishButton projectName={project?.name || "landing-page"} project={project} />
         
