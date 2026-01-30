@@ -9,6 +9,9 @@ const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orch
 const POLL_INTERVAL = 1500;
 const MAX_POLL_TIME = 120000; // 2 minutes max
 
+// Stream timeout - if no data received for this long, consider it stalled
+const STREAM_TIMEOUT = 60000; // 60 seconds without data = stalled
+
 interface PlanningJob {
   id: string;
   prompt: string;
@@ -67,172 +70,192 @@ export function useOrchestrator() {
   }, []);
 
   const streamEvents = useCallback(async (url: string, body: object) => {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
+    const controller = new AbortController();
+    let lastDataTime = Date.now();
+    
+    // Timeout check - abort if no data received for too long
+    const timeoutChecker = setInterval(() => {
+      if (Date.now() - lastDataTime > STREAM_TIMEOUT) {
+        console.error("[useOrchestrator] Stream stalled - no data for 60s");
+        controller.abort();
+        clearInterval(timeoutChecker);
+        setError("Connection stalled. The backend may have timed out. Please try again.");
+        setPhase("error");
+      }
+    }, 5000);
+    
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Orchestrator error: ${response.status} - ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Orchestrator error: ${response.status} - ${errorText}`);
+      }
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("No response body");
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No response body");
 
-    const decoder = new TextDecoder();
-    let buffer = "";
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      
-      let newlineIndex: number;
-      while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-        const line = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
+        // Reset timeout on any data received
+        lastDataTime = Date.now();
 
-        if (!line.startsWith("data: ")) continue;
+        buffer += decoder.decode(value, { stream: true });
         
-        const jsonStr = line.slice(6);
-        if (jsonStr === "[DONE]") continue;
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, newlineIndex).trim();
+          buffer = buffer.slice(newlineIndex + 1);
 
-        try {
-          const event: OrchestratorEvent = JSON.parse(jsonStr);
+          if (!line.startsWith("data: ")) continue;
           
-          if (event.type === "agents_init") {
-            setAgents(event.agents);
-            setStreamingOutput({});
-          } else if (event.type === "agent_status") {
-            setAgents(prev => ({
-              ...prev,
-              [event.agent]: {
-                ...prev[event.agent],
-                status: event.status,
-                statusLabel: event.statusLabel,
-                output: event.output || prev[event.agent]?.output,
-                code: event.code || prev[event.agent]?.code,
-              },
-            }));
-          } else if (event.type === "agents_update") {
-            setAgents(event.agents);
-          } else if (event.type === "agent_stream") {
-            setStreamingOutput(prev => ({
-              ...prev,
-              [event.agent]: event.output,
-            }));
-          } else if (event.type === "clarifying_questions") {
-            setClarifyingQuestions(event.questions);
-            setPhase("clarifying");
-          } else if (event.type === "agent_message") {
-            setAgentMessages(prev => [...prev, { agent: event.agent, message: event.message }]);
-          } else if (event.type === "file_generated") {
-            console.log("[useOrchestrator] File generated:", event.file.filename);
-            setGeneratedProject(prev => {
-              const existing = prev || {
-                name: "Generated Project",
-                type: "landing" as const,
-                files: [],
-              };
-              return {
-                ...existing,
-                files: [
-                  ...existing.files,
-                  {
-                    path: event.file.filename || event.file.path,
-                    content: event.file.content,
-                    language: event.file.language,
-                  },
-                ],
-              };
-            });
-          } else if (event.type === "migration_generated") {
-            console.log("[useOrchestrator] Migration generated:", event.filename);
-            setBackendArtifacts(prev => ({
-              ...prev,
-              migrations: [...prev.migrations, { filename: event.filename, content: event.file.content }],
-            }));
-            // Also add to project files
-            setGeneratedProject(prev => {
-              const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
-              return {
-                ...existing,
-                files: [...existing.files, { path: event.filename, content: event.file.content, language: "sql" }],
-              };
-            });
-          } else if (event.type === "edge_function_generated") {
-            console.log("[useOrchestrator] Edge function generated:", event.filename);
-            setBackendArtifacts(prev => ({
-              ...prev,
-              edgeFunctions: [...prev.edgeFunctions, { filename: event.filename, content: event.file.content }],
-            }));
-            // Also add to project files
-            setGeneratedProject(prev => {
-              const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
-              return {
-                ...existing,
-                files: [...existing.files, { path: event.filename, content: event.file.content, language: "typescript" }],
-              };
-            });
-          } else if (event.type === "secrets_required") {
-            console.log("[useOrchestrator] Secrets required:", event.secrets);
-            setBackendArtifacts(prev => ({
-              ...prev,
-              secretsRequired: [...prev.secretsRequired, ...event.secrets],
-            }));
-            setAgentMessages(prev => [...prev, { 
-              agent: "Backend", 
-              message: `⚠️ Required secrets: ${event.secrets.join(", ")}` 
-            }]);
-          } else if (event.type === "preview_ready") {
-            setGeneratedProject(prev => ({
-              ...prev,
-              name: prev?.name || "Generated Project",
-              type: prev?.type || "landing",
-              files: prev?.files || [],
-              previewHtml: event.html,
-            }));
-          } else if (event.type === "code_generated") {
-            setGeneratedProject(event.project);
-          } else if (event.type === "plan_ready" || event.type === "plan_created") {
-            setPlan(event.plan);
-            setPhase("awaiting_approval");
-          } else if (event.type === "project_complete") {
-            console.log("[useOrchestrator] Project complete with files:", event.files?.length);
-            if (event.files && event.files.length > 0) {
-              const finalProject: GeneratedProject = {
-                name: event.plan?.projectName || event.plan?.title || "Generated Project",
-                type: (event.plan?.projectType || event.plan?.type as "landing" | "webapp" | "native") || "landing",
-                files: event.files.map((f: { filename?: string; path?: string; content: string; language: string }) => ({
-                  path: f.filename || f.path || "unknown",
-                  content: f.content,
-                  language: f.language,
-                })),
-              };
-              setGeneratedProject(finalProject);
-            }
-            setPhase("complete");
-          } else if (event.type === "complete") {
-            setAgents(event.agents);
-            setSummary(event.summary || null);
-            if (event.project) {
+          const jsonStr = line.slice(6);
+          if (jsonStr === "[DONE]") continue;
+
+          try {
+            const event: OrchestratorEvent = JSON.parse(jsonStr);
+            
+            if (event.type === "agents_init") {
+              setAgents(event.agents);
+              setStreamingOutput({});
+            } else if (event.type === "agent_status") {
+              setAgents(prev => ({
+                ...prev,
+                [event.agent]: {
+                  ...prev[event.agent],
+                  status: event.status,
+                  statusLabel: event.statusLabel,
+                  output: event.output || prev[event.agent]?.output,
+                  code: event.code || prev[event.agent]?.code,
+                },
+              }));
+            } else if (event.type === "agents_update") {
+              setAgents(event.agents);
+            } else if (event.type === "agent_stream") {
+              setStreamingOutput(prev => ({
+                ...prev,
+                [event.agent]: event.output,
+              }));
+            } else if (event.type === "clarifying_questions") {
+              setClarifyingQuestions(event.questions);
+              setPhase("clarifying");
+            } else if (event.type === "agent_message") {
+              setAgentMessages(prev => [...prev, { agent: event.agent, message: event.message }]);
+            } else if (event.type === "file_generated") {
+              console.log("[useOrchestrator] File generated:", event.file.filename);
+              setGeneratedProject(prev => {
+                const existing = prev || {
+                  name: "Generated Project",
+                  type: "landing" as const,
+                  files: [],
+                };
+                return {
+                  ...existing,
+                  files: [
+                    ...existing.files,
+                    {
+                      path: event.file.filename || event.file.path,
+                      content: event.file.content,
+                      language: event.file.language,
+                    },
+                  ],
+                };
+              });
+            } else if (event.type === "migration_generated") {
+              console.log("[useOrchestrator] Migration generated:", event.filename);
+              setBackendArtifacts(prev => ({
+                ...prev,
+                migrations: [...prev.migrations, { filename: event.filename, content: event.file.content }],
+              }));
+              setGeneratedProject(prev => {
+                const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
+                return {
+                  ...existing,
+                  files: [...existing.files, { path: event.filename, content: event.file.content, language: "sql" }],
+                };
+              });
+            } else if (event.type === "edge_function_generated") {
+              console.log("[useOrchestrator] Edge function generated:", event.filename);
+              setBackendArtifacts(prev => ({
+                ...prev,
+                edgeFunctions: [...prev.edgeFunctions, { filename: event.filename, content: event.file.content }],
+              }));
+              setGeneratedProject(prev => {
+                const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
+                return {
+                  ...existing,
+                  files: [...existing.files, { path: event.filename, content: event.file.content, language: "typescript" }],
+                };
+              });
+            } else if (event.type === "secrets_required") {
+              console.log("[useOrchestrator] Secrets required:", event.secrets);
+              setBackendArtifacts(prev => ({
+                ...prev,
+                secretsRequired: [...prev.secretsRequired, ...event.secrets],
+              }));
+              setAgentMessages(prev => [...prev, { 
+                agent: "Backend", 
+                message: `⚠️ Required secrets: ${event.secrets.join(", ")}` 
+              }]);
+            } else if (event.type === "preview_ready") {
+              setGeneratedProject(prev => ({
+                ...prev,
+                name: prev?.name || "Generated Project",
+                type: prev?.type || "landing",
+                files: prev?.files || [],
+                previewHtml: event.html,
+              }));
+            } else if (event.type === "code_generated") {
               setGeneratedProject(event.project);
+            } else if (event.type === "plan_ready" || event.type === "plan_created") {
+              setPlan(event.plan);
+              setPhase("awaiting_approval");
+            } else if (event.type === "project_complete") {
+              console.log("[useOrchestrator] Project complete with files:", event.files?.length);
+              if (event.files && event.files.length > 0) {
+                const finalProject: GeneratedProject = {
+                  name: event.plan?.projectName || event.plan?.title || "Generated Project",
+                  type: (event.plan?.projectType || event.plan?.type as "landing" | "webapp" | "native") || "landing",
+                  files: event.files.map((f: { filename?: string; path?: string; content: string; language: string }) => ({
+                    path: f.filename || f.path || "unknown",
+                    content: f.content,
+                    language: f.language,
+                  })),
+                };
+                setGeneratedProject(finalProject);
+              }
+              setPhase("complete");
+            } else if (event.type === "complete") {
+              setAgents(event.agents);
+              setSummary(event.summary || null);
+              if (event.project) {
+                setGeneratedProject(event.project);
+              }
+              setPhase("complete");
+            } else if (event.type === "error") {
+              setError(event.message);
+              setPhase("error");
             }
-            setPhase("complete");
-          } else if (event.type === "error") {
-            setError(event.message);
-            setPhase("error");
+          } catch {
+            // Ignore parse errors for partial JSON
           }
-        } catch {
-          // Ignore parse errors for partial JSON
         }
       }
+    } finally {
+      clearInterval(timeoutChecker);
     }
   }, []);
 
