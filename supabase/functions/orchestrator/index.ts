@@ -334,8 +334,26 @@ No placeholders. Mobile responsive. Premium feel.
 
 TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`,
 
-  backend: `Senior backend engineer. Create clean, secure endpoints.
-Output: Supabase Edge Functions, PostgreSQL schemas with RLS.
+  backend: `You are the Backend Agent for HeftCoder's full-stack orchestrator.
+Generate production-ready backend infrastructure based on the plan.
+
+OUTPUT FORMAT (REQUIRED):
+{
+  "files": [
+    {"filename": "migrations/001_create_tables.sql", "type": "migration", "content": "SQL here"},
+    {"filename": "functions/api-handler/index.ts", "type": "edge_function", "content": "TS here"}
+  ],
+  "secrets_required": ["API_KEY_NAME"],
+  "handoff": "TOOL_CALL: handoff_to_frontend"
+}
+
+DATABASE PATTERNS (ALWAYS APPLY):
+- UUID Primary Keys: id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+- Audit Timestamps: created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+- Soft Deletes: deleted_at TIMESTAMPTZ DEFAULT NULL
+- RLS Policies: Enable on ALL tables
+- User Ownership: user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL
+
 TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`,
 
   integrator: `Integration specialist. Connect frontend to backend.
@@ -410,6 +428,17 @@ interface GeneratedFile {
   path: string;
   content: string;
   language: string;
+  type?: "migration" | "edge_function" | "docker" | "config" | "frontend";
+}
+
+interface BackendArtifacts {
+  files: Array<{
+    filename: string;
+    type: "migration" | "edge_function" | "docker" | "config";
+    content: string;
+  }>;
+  secrets_required?: string[];
+  handoff?: string;
 }
 
 interface AgentTask {
@@ -722,6 +751,38 @@ function detectToolCalls(content: string): ToolCall[] {
 
 // ============= CODE EXTRACTION =============
 
+function extractBackendArtifacts(content: string): BackendArtifacts | null {
+  // Try to find JSON with "files" array (new Backend agent format)
+  const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+      if (parsed.files && Array.isArray(parsed.files)) {
+        console.log(`[Backend Extraction] Found ${parsed.files.length} backend files`);
+        return parsed as BackendArtifacts;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+  
+  // Try raw JSON
+  const rawJsonMatch = content.match(/\{[\s\S]*?"files"\s*:\s*\[[\s\S]*?\][\s\S]*?\}/);
+  if (rawJsonMatch) {
+    try {
+      const parsed = JSON.parse(rawJsonMatch[0]);
+      if (parsed.files && Array.isArray(parsed.files)) {
+        console.log(`[Backend Extraction] Found ${parsed.files.length} backend files (raw)`);
+        return parsed as BackendArtifacts;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+  
+  return null;
+}
+
 function extractCodeBlocks(content: string): GeneratedFile[] {
   const files: GeneratedFile[] = [];
   const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -742,7 +803,7 @@ function extractCodeBlocks(content: string): GeneratedFile[] {
     else if (language === "tsx") filename = "App.tsx";
     else if (language === "jsx") filename = "App.jsx";
     
-    files.push({ filename, path: filename, content: code, language });
+    files.push({ filename, path: filename, content: code, language, type: "frontend" });
     console.log(`[Code Extraction] Found ${language} file: ${filename} (${code.length} chars)`);
   }
 
@@ -1107,24 +1168,53 @@ class OrchestrationEngine {
     try {
       let message = "";
       
-      if (agentKey === "frontend") {
+      if (agentKey === "backend") {
+        // Build comprehensive backend request
+        const plan = this.state.plan;
+        message = `Generate full-stack backend infrastructure for this project:
+
+PROJECT: ${plan?.projectName || 'Web Project'}
+TYPE: ${plan?.projectType || 'webapp'}
+DESCRIPTION: ${plan?.description || originalRequest || 'A modern web application'}
+TECH STACK: ${JSON.stringify(plan?.techStack || {})}
+
+REQUIREMENTS:
+- Database tables with RLS policies
+- Edge Functions for API endpoints
+- Authentication support if needed
+- Proper security patterns
+
+Original User Request: ${originalRequest || this.originalRequest}
+
+OUTPUT REQUIRED: JSON with "files" array containing migrations and edge functions.`;
+      } else if (agentKey === "frontend") {
         // Build comprehensive frontend request
         const plan = this.state.plan;
+        const backendFiles = this.state.files.filter(f => f.type === "migration" || f.type === "edge_function");
+        const backendContext = backendFiles.length > 0 
+          ? `\n\nBACKEND INFRASTRUCTURE AVAILABLE:\n${backendFiles.map(f => `- ${f.filename} (${f.type})`).join('\n')}`
+          : '';
+        
         message = `Create a stunning, production-ready ${plan?.projectType || 'landing'} page.
 
 PROJECT: ${plan?.projectName || 'Web Project'}
 DESCRIPTION: ${plan?.description || originalRequest || 'A beautiful modern website'}
 DESIGN DIRECTION: ${plan?.designDirection || 'Dark mode premium with purple/pink gradients and glassmorphism'}
 KEY FEATURES: ${plan?.keyFeatures?.join(', ') || 'Hero section, Features, CTA, Footer'}
+${backendContext}
 
 Original User Request: ${originalRequest || this.originalRequest}
 
 CRITICAL: Output complete HTML code in a \`\`\`html code block. Make it STUNNING!`;
       } else if (agentKey === "qa") {
-        const generatedCode = this.state.files.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+        const generatedCode = this.state.files.map(f => `--- ${f.path} (${f.type || 'unknown'}) ---\n${f.content}`).join('\n\n');
         message = `Review this generated code:\n\n${generatedCode || 'No code yet.'}\n\nProvide brief verdict.`;
       } else if (agentKey === "devops") {
-        message = `Confirm deployment readiness for: ${this.state.plan?.projectName}. Files: ${this.state.files.length}`;
+        const migrations = this.state.files.filter(f => f.type === "migration").length;
+        const edgeFns = this.state.files.filter(f => f.type === "edge_function").length;
+        const frontend = this.state.files.filter(f => f.type === "frontend" || f.language === "html").length;
+        message = `Confirm deployment readiness for: ${this.state.plan?.projectName}.
+Files: ${this.state.files.length} total (${migrations} migrations, ${edgeFns} edge functions, ${frontend} frontend)`;
       } else {
         message = this.state.plan 
           ? `Build: ${JSON.stringify(this.state.plan, null, 2)}`
@@ -1133,7 +1223,85 @@ CRITICAL: Output complete HTML code in a \`\`\`html code block. Make it STUNNING
 
       const { content, toolCalls } = await callLangdockAssistant(agentKey, message);
 
-      // Extract code
+      // Handle backend agent's structured JSON output
+      if (agentKey === "backend") {
+        const backendArtifacts = extractBackendArtifacts(content);
+        
+        if (backendArtifacts && backendArtifacts.files.length > 0) {
+          console.log(`[Orchestration] Backend generated ${backendArtifacts.files.length} infrastructure files`);
+          
+          // Emit secrets_required event if any
+          if (backendArtifacts.secrets_required && backendArtifacts.secrets_required.length > 0) {
+            this.send({
+              type: "secrets_required",
+              secrets: backendArtifacts.secrets_required,
+            });
+          }
+          
+          // Convert to GeneratedFile format and emit events
+          for (const file of backendArtifacts.files) {
+            const language = file.type === "migration" ? "sql" : "typescript";
+            const generatedFile: GeneratedFile = {
+              filename: file.filename,
+              path: file.filename,
+              content: file.content,
+              language,
+              type: file.type,
+            };
+            
+            this.state.files.push(generatedFile);
+            
+            // Emit specific events for different file types
+            if (file.type === "migration") {
+              this.send({ 
+                type: "migration_generated", 
+                agent: agentKey, 
+                file: generatedFile,
+                filename: file.filename,
+              });
+            } else if (file.type === "edge_function") {
+              this.send({ 
+                type: "edge_function_generated", 
+                agent: agentKey, 
+                file: generatedFile,
+                filename: file.filename,
+              });
+            } else {
+              this.send({ type: "file_generated", agent: agentKey, file: generatedFile });
+            }
+          }
+          
+          // Update agent status
+          if (this.agentTasks[agentKey]) {
+            this.agentTasks[agentKey].status = "complete";
+            this.agentTasks[agentKey].statusLabel = `Generated ${backendArtifacts.files.length} files`;
+          }
+          
+          this.send({
+            type: "agent_status",
+            agent: agentKey,
+            status: "complete",
+            statusLabel: `${backendArtifacts.files.length} backend files ready`,
+            progress: this.getProgress(),
+          });
+          
+          // Check for handoff in artifacts or tool calls
+          if (backendArtifacts.handoff || toolCalls.length > 0) {
+            const calls = toolCalls.length > 0 ? toolCalls : detectToolCalls(backendArtifacts.handoff || "");
+            for (const tc of calls) {
+              await this.handleToolCall(tc.name, { ...tc.parameters, backend_artifacts: backendArtifacts });
+            }
+          } else {
+            await this.autoHandoff(agentKey, { backend_artifacts: backendArtifacts });
+          }
+          
+          return; // Exit early, we've handled backend
+        } else {
+          console.log(`[Orchestration] Backend returned no structured files, falling back to code blocks`);
+        }
+      }
+
+      // Extract code (for frontend/other agents)
       const expectsCode = ["frontend", "backend", "integrator"].includes(agentKey);
       let files = extractCodeBlocks(content);
 
@@ -1144,7 +1312,7 @@ CRITICAL: Output complete HTML code in a \`\`\`html code block. Make it STUNNING
           this.state.plan?.projectName || "Generated Project",
           this.state.plan?.description || this.originalRequest || "A beautiful landing page"
         );
-        files = [{ filename: "index.html", path: "index.html", content: fallbackHtml, language: "html" }];
+        files = [{ filename: "index.html", path: "index.html", content: fallbackHtml, language: "html", type: "frontend" }];
       }
 
       if (expectsCode && agentKey !== "frontend" && files.length === 0) {
