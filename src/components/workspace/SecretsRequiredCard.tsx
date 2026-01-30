@@ -297,7 +297,7 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
         </div>
         
         <p className="text-xs text-muted-foreground text-center">
-          Secrets are encrypted and stored securely in Lovable Cloud.
+          Secrets are encrypted and stored securely in HeftCoder Cloud.
         </p>
       </CardContent>
     </Card>
