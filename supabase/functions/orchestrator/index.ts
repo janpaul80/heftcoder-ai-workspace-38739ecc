@@ -469,7 +469,7 @@ function handleDiagnostic(): Response {
 // ============= TYPES =============
 
 type ProjectType = "landing" | "webapp" | "native";
-type AgentPhase = "idle" | "planning" | "awaiting_approval" | "building_backend" | "building_frontend" | "integrating" | "qa_testing" | "deploying" | "complete" | "error";
+type AgentPhase = "idle" | "planning" | "clarifying" | "awaiting_approval" | "building_backend" | "building_frontend" | "integrating" | "qa_testing" | "deploying" | "complete" | "error";
 type AgentStatus = "idle" | "thinking" | "installing" | "creating" | "testing" | "deploying" | "complete" | "error";
 
 interface PlanStep {
@@ -887,7 +887,15 @@ function extractPlan(content: string): ProjectPlan | null {
   const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
   if (jsonBlockMatch) {
     try {
-      return JSON.parse(jsonBlockMatch[1].trim());
+      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+      // Check if it's clarifying questions (not a plan)
+      if (parsed.clarifying_questions) {
+        return null; // This is not a plan, it's clarifying questions
+      }
+      // Validate it has required plan fields
+      if (parsed.projectName && parsed.steps && Array.isArray(parsed.steps)) {
+        return parsed;
+      }
     } catch {
       // Fall through to other methods
     }
@@ -898,10 +906,52 @@ function extractPlan(content: string): ProjectPlan | null {
   if (!jsonMatch) return null;
   
   try {
-    return JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
+    // Validate it has required plan fields
+    if (parsed.projectName && parsed.steps && Array.isArray(parsed.steps)) {
+      return parsed;
+    }
+    return null;
   } catch {
     return null;
   }
+}
+
+interface ClarifyingQuestion {
+  id: string;
+  question: string;
+  options?: string[];
+  type: 'text' | 'choice' | 'confirm';
+}
+
+function extractClarifyingQuestions(content: string): ClarifyingQuestion[] | null {
+  // Look for JSON in code blocks
+  const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)```/);
+  if (jsonBlockMatch) {
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1].trim());
+      if (parsed.clarifying_questions && Array.isArray(parsed.clarifying_questions)) {
+        return parsed.clarifying_questions;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+  
+  // Look for clarifying_questions key in raw JSON
+  const match = content.match(/\{[\s\S]*?"clarifying_questions"[\s\S]*?\]/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0] + "}");
+      if (parsed.clarifying_questions && Array.isArray(parsed.clarifying_questions)) {
+        return parsed.clarifying_questions;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  
+  return null;
 }
 
 // ============= STUNNING FALLBACK HTML =============
@@ -1149,6 +1199,7 @@ class OrchestrationEngine {
     const progressMap: Record<AgentPhase, number> = {
       idle: 0,
       planning: 10,
+      clarifying: 12,
       awaiting_approval: 15,
       building_backend: 30,
       building_frontend: 50,
@@ -1162,6 +1213,25 @@ class OrchestrationEngine {
   }
 
   private initAgentsFromPlan(plan: ProjectPlan) {
+    // Safety check - ensure plan and steps exist
+    if (!plan || !plan.steps || !Array.isArray(plan.steps)) {
+      console.error("[Orchestration] Invalid plan passed to initAgentsFromPlan:", plan);
+      // Initialize with just frontend as fallback
+      this.agentTasks["architect"] = {
+        agentId: "architect",
+        agentName: AGENTS.architect.name,
+        role: AGENTS.architect.role,
+        status: "complete",
+      };
+      this.agentTasks["frontend"] = {
+        agentId: "frontend",
+        agentName: AGENTS.frontend.name,
+        role: AGENTS.frontend.role,
+        status: "idle",
+      };
+      return;
+    }
+    
     const agentOrder = ["architect", "frontend", "qa", "devops"];
     if (plan.steps.some(s => s.agent === "backend")) {
       agentOrder.splice(1, 0, "backend");
@@ -1540,22 +1610,65 @@ Files: ${this.state.files.length} total (${migrations} migrations, ${edgeFns} ed
     try {
       const { content, toolCalls } = await callLangdockAssistant("architect", message);
 
+      // First check for clarifying questions
+      const questions = extractClarifyingQuestions(content);
+      if (questions && questions.length > 0) {
+        this.state.phase = "clarifying";
+        this.agentTasks["architect"].status = "complete";
+        this.agentTasks["architect"].statusLabel = "Gathering requirements...";
+        
+        this.send({
+          type: "agent_status",
+          agent: "architect",
+          status: "complete",
+          statusLabel: "Gathering requirements...",
+        });
+        
+        this.send({ type: "clarifying_questions", questions });
+        return; // Wait for user to answer questions
+      }
+
+      // Extract and validate plan
       const plan = extractPlan(content);
-      if (plan) {
+      if (plan && plan.steps && Array.isArray(plan.steps)) {
         this.state.plan = plan;
         this.initAgentsFromPlan(plan);
         this.send({ type: "plan_created", plan });
+        
+        this.agentTasks["architect"].status = "complete";
+        this.agentTasks["architect"].statusLabel = "Plan ready";
+
+        this.send({
+          type: "agent_status",
+          agent: "architect",
+          status: "complete",
+          statusLabel: "Plan ready",
+        });
+      } else {
+        // No valid plan or questions - generate a default plan
+        const defaultPlan: ProjectPlan = {
+          projectName: "Generated Project",
+          projectType: "landing",
+          description: message,
+          techStack: { frontend: ["HTML", "Tailwind CSS"], backend: [], database: "None" },
+          steps: [{ id: "1", agent: "frontend", task: "Build the project", dependencies: [] }],
+          estimatedTime: "2-3 minutes"
+        };
+        
+        this.state.plan = defaultPlan;
+        this.initAgentsFromPlan(defaultPlan);
+        this.send({ type: "plan_created", plan: defaultPlan });
+        
+        this.agentTasks["architect"].status = "complete";
+        this.agentTasks["architect"].statusLabel = "Plan ready";
+
+        this.send({
+          type: "agent_status",
+          agent: "architect",
+          status: "complete",
+          statusLabel: "Plan ready",
+        });
       }
-
-      this.agentTasks["architect"].status = "complete";
-      this.agentTasks["architect"].statusLabel = "Plan ready";
-
-      this.send({
-        type: "agent_status",
-        agent: "architect",
-        status: "complete",
-        statusLabel: "Plan ready",
-      });
 
       // IMPORTANT: Don't auto-handoff - wait for user approval
       // The frontend will show the plan and wait for approval
