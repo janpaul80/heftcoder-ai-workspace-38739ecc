@@ -5,6 +5,7 @@ import { PreviewPanel } from './PreviewPanel';
 import { FileExplorerModal } from './FileExplorerModal';
 import { PlanApprovalCard } from './PlanApprovalCard';
 import { RefinePanel } from './RefinePanel';
+import { ClarifyingQuestionsCard } from './ClarifyingQuestionsCard';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { Message, Attachment, ProjectStatus, UserTier, GeneratedProject } from '@/types/workspace';
@@ -36,8 +37,10 @@ export function WorkspaceEditor() {
     summary,
     streamingOutput,
     generatedProject,
+    clarifyingQuestions,
     agentMessages,
-    requestPlan, 
+    requestPlan,
+    answerQuestions,
     rejectPlan,
     askQuestion,
     approvePlan,
@@ -78,6 +81,26 @@ export function WorkspaceEditor() {
       setIsLoading(false);
     }
   }, [phase, plan]);
+
+  // Show clarifying questions message
+  useEffect(() => {
+    if (phase === "clarifying" && clarifyingQuestions.length > 0) {
+      setMessages(prev => {
+        const newMessages = [...prev];
+        for (let i = newMessages.length - 1; i >= 0; i--) {
+          if (newMessages[i].role === 'assistant') {
+            newMessages[i] = {
+              ...newMessages[i],
+              content: `## 💬 Quick Questions\n\nBefore I create your plan, I need a few details to make sure I build exactly what you need.`,
+            };
+            break;
+          }
+        }
+        return newMessages;
+      });
+      setIsLoading(false);
+    }
+  }, [phase, clarifyingQuestions]);
 
   // Add agent messages to chat
   useEffect(() => {
@@ -245,6 +268,31 @@ export function WorkspaceEditor() {
     refineProject(feedback);
   }, [refineProject]);
 
+  const handleAnswerQuestions = useCallback(async (answers: Record<string, string>) => {
+    const answersText = Object.entries(answers).map(([id, answer]) => {
+      const q = clarifyingQuestions.find(cq => cq.id === id);
+      return `• ${q?.question || id}: ${answer}`;
+    }).join('\n');
+    
+    const answerMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: `**My preferences:**\n${answersText}`,
+      timestamp: new Date(),
+    };
+    
+    const processingMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `📋 **Creating your build plan...**\n\nThanks! Now generating a detailed plan based on your requirements.`,
+      timestamp: new Date(),
+    };
+    
+    setMessages(prev => [...prev, answerMessage, processingMessage]);
+    setIsLoading(true);
+    answerQuestions(answers);
+  }, [answerQuestions, clarifyingQuestions]);
+
   const handleStartOver = useCallback(() => {
     reset();
     setMessages([]);
@@ -253,11 +301,12 @@ export function WorkspaceEditor() {
     setMobileTab('chat');
   }, [reset]);
 
-  const isActive = phase !== "idle" && phase !== "complete" && phase !== "error" && phase !== "awaiting_approval";
+  const isActive = phase !== "idle" && phase !== "complete" && phase !== "error" && phase !== "awaiting_approval" && phase !== "clarifying";
   const isRefining = phase === "building"; // Use building phase for refinements too
   const hasGeneratedFiles = generatedProject && generatedProject.files.length > 0;
   const displayProject = loadedProject || generatedProject;
   const showApproval = phase === "awaiting_approval" && plan;
+  const showClarifying = phase === "clarifying" && clarifyingQuestions.length > 0;
   const showRefine = phase === "complete" && hasGeneratedFiles;
 
   // Mobile layout with tabs
@@ -303,6 +352,17 @@ export function WorkspaceEditor() {
         <div className="flex-1 overflow-hidden">
           {mobileTab === 'chat' ? (
             <div className="flex flex-col h-full overflow-hidden">
+              {/* Clarifying Questions - positioned above chat */}
+              {showClarifying && (
+                <div className="flex-shrink-0 p-3 border-b border-border bg-background/95 backdrop-blur-sm max-h-[60vh] overflow-y-auto z-10">
+                  <ClarifyingQuestionsCard
+                    questions={clarifyingQuestions}
+                    onSubmit={handleAnswerQuestions}
+                    isLoading={isLoading}
+                  />
+                </div>
+              )}
+
               {/* Plan Approval Card - positioned above chat */}
               {showApproval && (
                 <div className="flex-shrink-0 p-3 border-b border-border bg-background/95 backdrop-blur-sm max-h-[50vh] overflow-y-auto z-10">
@@ -366,6 +426,17 @@ export function WorkspaceEditor() {
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={25} maxSize={55}>
           <div className="flex flex-col h-full overflow-hidden">
+            {/* Clarifying Questions - positioned above chat */}
+            {showClarifying && (
+              <div className="flex-shrink-0 p-4 border-b border-border bg-background/95 backdrop-blur-sm max-h-[60vh] overflow-y-auto z-10">
+                <ClarifyingQuestionsCard
+                  questions={clarifyingQuestions}
+                  onSubmit={handleAnswerQuestions}
+                  isLoading={isLoading}
+                />
+              </div>
+            )}
+
             {/* Plan Approval Card - positioned above chat */}
             {showApproval && (
               <div className="flex-shrink-0 p-4 border-b border-border bg-background/95 backdrop-blur-sm z-10">

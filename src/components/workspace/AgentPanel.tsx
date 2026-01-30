@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import type { AgentInfo, AgentStatus, ProjectPlan, OrchestratorPhase } from '@/types/orchestrator';
+import type { AgentInfo, AgentStatus, ProjectPlan, OrchestratorPhase, ClarifyingQuestion } from '@/types/orchestrator';
 import { 
   CheckCircle2, 
   Loader2, 
@@ -18,12 +18,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { useState, memo } from 'react';
 import heftcoderLogo from '@/assets/heftcoder-logo.png';
+import { ClarifyingQuestionsCard } from './ClarifyingQuestionsCard';
 
 interface AgentPanelProps {
   agents: Record<string, AgentInfo>;
   phase: OrchestratorPhase;
   plan: ProjectPlan | null;
+  clarifyingQuestions?: ClarifyingQuestion[];
   onApprove: () => void;
+  onAnswerQuestions?: (answers: Record<string, string>) => void;
   streamingOutput?: Record<string, string>;
 }
 
@@ -249,7 +252,9 @@ export function AgentPanel({
   agents, 
   phase, 
   plan, 
+  clarifyingQuestions = [],
   onApprove,
+  onAnswerQuestions,
   streamingOutput = {}
 }: AgentPanelProps) {
   const agentList = Object.entries(agents);
@@ -274,12 +279,14 @@ export function AgentPanel({
         <span className={cn(
           "text-xs px-2 py-0.5 rounded-full font-medium",
           phase === "planning" && "bg-violet-500/20 text-violet-400",
+          phase === "clarifying" && "bg-purple-500/20 text-purple-400",
           phase === "awaiting_approval" && "bg-amber-500/20 text-amber-400",
           phase === "building" && "bg-blue-500/20 text-blue-400",
+          phase === "refining" && "bg-pink-500/20 text-pink-400",
           phase === "complete" && "bg-green-500/20 text-green-400",
           phase === "error" && "bg-destructive/20 text-destructive"
         )}>
-          {phase.replace("_", " ")}
+          {phase === "clarifying" ? "Questions" : phase.replace("_", " ")}
         </span>
       </div>
 
@@ -295,6 +302,14 @@ export function AgentPanel({
             />
           ))}
         </div>
+      )}
+
+      {/* Clarifying phase - show questions */}
+      {phase === "clarifying" && clarifyingQuestions.length > 0 && onAnswerQuestions && (
+        <ClarifyingQuestionsCard 
+          questions={clarifyingQuestions}
+          onSubmit={onAnswerQuestions}
+        />
       )}
 
       {/* Awaiting approval - show plan */}
