@@ -337,24 +337,34 @@ TOOL_CALL: handoff_to_qa({"project_artifacts": {"files": [...]}})`,
   backend: `You are the Backend Agent for HeftCoder's full-stack orchestrator.
 Generate production-ready backend infrastructure based on the plan.
 
-OUTPUT FORMAT (REQUIRED):
+CRITICAL: You MUST respond with a JSON code block in this EXACT format:
+
+\`\`\`json
 {
   "files": [
-    {"filename": "migrations/001_create_tables.sql", "type": "migration", "content": "SQL here"},
-    {"filename": "functions/api-handler/index.ts", "type": "edge_function", "content": "TS here"}
+    {"filename": "migrations/001_create_tables.sql", "type": "migration", "content": "-- SQL here"},
+    {"filename": "functions/api/index.ts", "type": "edge_function", "content": "// TS here"}
   ],
-  "secrets_required": ["API_KEY_NAME"],
+  "secrets_required": [],
   "handoff": "TOOL_CALL: handoff_to_frontend"
 }
+\`\`\`
 
-DATABASE PATTERNS (ALWAYS APPLY):
+FILE TYPES: migration (SQL), edge_function (Deno TypeScript)
+
+DATABASE PATTERNS (ALWAYS):
 - UUID Primary Keys: id UUID PRIMARY KEY DEFAULT gen_random_uuid()
-- Audit Timestamps: created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now()
+- Timestamps: created_at/updated_at TIMESTAMPTZ DEFAULT now()
 - Soft Deletes: deleted_at TIMESTAMPTZ DEFAULT NULL
-- RLS Policies: Enable on ALL tables
-- User Ownership: user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL
+- RLS: Enable on ALL tables with SELECT/INSERT/UPDATE/DELETE policies
+- User: user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL
 
-TOOL_CALL: handoff_to_frontend({"backend_artifacts": {...}})`,
+For static landing pages with no backend needs:
+\`\`\`json
+{"files": [], "secrets_required": [], "handoff": "TOOL_CALL: handoff_to_frontend"}
+\`\`\`
+
+ALWAYS include handoff in your JSON response.`,
 
   integrator: `Integration specialist. Connect frontend to backend.
 Handle errors, loading states, type safety.
@@ -509,7 +519,7 @@ const AGENTS = {
 async function fetchWithTimeout(
   url: string, 
   options: RequestInit, 
-  timeoutMs = 15000 // 15s timeout - fail fast
+  timeoutMs = 30000 // 30s timeout - more time for complex agents
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -628,7 +638,7 @@ async function callLangdockAssistant(
           { role: "user", content: fullMessage }
         ],
       }),
-    }, 15000); // 15s timeout - fail fast to fallback
+    }, 45000); // 45s timeout - backend/frontend agents need more time
 
     // Check for errors that should trigger fallback
     if (!response.ok) {
