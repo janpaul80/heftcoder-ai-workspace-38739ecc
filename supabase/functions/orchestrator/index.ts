@@ -596,16 +596,16 @@ async function callLovableAI(
 // Agent-specific timeouts for optimal speed vs quality tradeoff
 
 const AGENT_TIMEOUTS: Record<string, number> = {
-  architect: 8000,   // 8s - must be FAST, fallback quickly
-  backend: 20000,    // 20s - reduced from 30s to prevent stalls
-  frontend: 30000,   // 30s - reduced from 45s
-  integrator: 15000, // 15s - reduced from 20s
-  qa: 10000,         // 10s - reduced from 15s
-  devops: 8000,      // 8s - reduced from 10s
+  architect: 6000,   // 6s - must be FAST, fallback quickly
+  backend: 15000,    // 15s - reduced to prevent stalls
+  frontend: 20000,   // 20s - reduced significantly
+  integrator: 10000, // 10s - reduced
+  qa: 8000,          // 8s - reduced
+  devops: 5000,      // 5s - reduced
 };
 
 // Maximum total execution time for the entire pipeline (prevents infinite stalls)
-const MAX_PIPELINE_TIMEOUT = 90000; // 90 seconds total
+const MAX_PIPELINE_TIMEOUT = 60000; // 60 seconds total - tighter limit
 
 async function callLangdockAssistant(
   agentKey: string,
@@ -1506,10 +1506,15 @@ Files: ${this.state.files.length} total (${migrations} migrations, ${edgeFns} ed
 
   private async autoHandoff(agentKey: string, context: Record<string, unknown>) {
     const agent = AGENTS[agentKey as keyof typeof AGENTS];
+    console.log(`[Orchestration] autoHandoff from ${agentKey}, nextHandoff: ${agent?.nextHandoff || 'none'}`);
+    
     if (!agent?.nextHandoff) {
+      console.log(`[Orchestration] No next handoff, completing project`);
       await this.completeProject(context);
       return;
     }
+    
+    console.log(`[Orchestration] Triggering ${agent.nextHandoff}...`);
     await this.handleToolCall(agent.nextHandoff, context);
   }
 
