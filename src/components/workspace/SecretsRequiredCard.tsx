@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -182,75 +183,79 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {secrets.map((secretName) => {
-          const isAdded = addedSecrets.has(secretName);
-          const isSaving = savingSecret === secretName;
-          const link = getSecretLink(secretName);
-          
-          return (
-            <div key={secretName} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor={secretName} className="flex items-center gap-2 text-sm font-medium">
-                  <Key className="h-3.5 w-3.5 text-muted-foreground" />
-                  {secretName}
-                  {isAdded && <Check className="h-4 w-4 text-emerald-400" />}
-                </Label>
-                {link && (
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1 text-xs text-primary hover:underline"
-                  >
-                    {link.label}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mb-1">
-                {getSecretDescription(secretName)}
-              </p>
-              <div className="flex gap-2">
-                <Input
-                  id={secretName}
-                  type="password"
-                  placeholder={`Enter ${secretName}...`}
-                  value={secretValues[secretName] || ''}
-                  onChange={(e) => handleSecretChange(secretName, e.target.value)}
-                  disabled={isAdded || isSaving}
-                  className={cn(
-                    "flex-1 bg-background/50 border-border/50",
-                    isAdded && "opacity-50"
-                  )}
-                />
-                <Button
-                  variant={isAdded ? "secondary" : "outline"}
-                  size="sm"
-                  onClick={() => handleAddSecret(secretName)}
-                  disabled={isAdded || isSaving || !secretValues[secretName]?.trim()}
-                  className="shrink-0 min-w-[80px]"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                      Saving
-                    </>
-                  ) : isAdded ? (
-                    <>
-                      <Check className="h-4 w-4 mr-1" />
-                      Saved
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          );
-        })}
+        <ScrollArea className="max-h-[300px] pr-3">
+          <div className="space-y-4">
+            {secrets.map((secretName) => {
+              const isAdded = addedSecrets.has(secretName);
+              const isSaving = savingSecret === secretName;
+              const link = getSecretLink(secretName);
+              
+              return (
+                <div key={secretName} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor={secretName} className="flex items-center gap-2 text-sm font-medium">
+                      <Key className="h-3.5 w-3.5 text-muted-foreground" />
+                      {secretName}
+                      {isAdded && <Check className="h-4 w-4 text-emerald-400" />}
+                    </Label>
+                    {link && (
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        {link.label}
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    {getSecretDescription(secretName)}
+                  </p>
+                  <div className="flex gap-2">
+                    <Input
+                      id={secretName}
+                      type="password"
+                      placeholder={`Enter ${secretName}...`}
+                      value={secretValues[secretName] || ''}
+                      onChange={(e) => handleSecretChange(secretName, e.target.value)}
+                      disabled={isAdded || isSaving}
+                      className={cn(
+                        "flex-1 bg-background/50 border-border/50",
+                        isAdded && "opacity-50"
+                      )}
+                    />
+                    <Button
+                      variant={isAdded ? "secondary" : "outline"}
+                      size="sm"
+                      onClick={() => handleAddSecret(secretName)}
+                      disabled={isAdded || isSaving || !secretValues[secretName]?.trim()}
+                      className="shrink-0 min-w-[80px]"
+                    >
+                      {isSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                          Saving
+                        </>
+                      ) : isAdded ? (
+                        <>
+                          <Check className="h-4 w-4 mr-1" />
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </ScrollArea>
 
         <div className="flex gap-2 pt-2">
           {allSecretsAdded ? (
