@@ -76,12 +76,32 @@ export interface GeneratedFile {
   path?: string;
   content: string;
   language: string;
+  type?: "migration" | "edge_function" | "docker" | "config" | "frontend";
 }
 
 export interface FileGeneratedEvent {
   type: "file_generated";
   agent: string;
   file: GeneratedFile;
+}
+
+export interface MigrationGeneratedEvent {
+  type: "migration_generated";
+  agent: string;
+  file: GeneratedFile;
+  filename: string;
+}
+
+export interface EdgeFunctionGeneratedEvent {
+  type: "edge_function_generated";
+  agent: string;
+  file: GeneratedFile;
+  filename: string;
+}
+
+export interface SecretsRequiredEvent {
+  type: "secrets_required";
+  secrets: string[];
 }
 
 export interface PreviewReadyEvent {
@@ -139,6 +159,9 @@ export type OrchestratorEvent =
   | AgentsInitEvent 
   | AgentsUpdateEvent
   | FileGeneratedEvent
+  | MigrationGeneratedEvent
+  | EdgeFunctionGeneratedEvent
+  | SecretsRequiredEvent
   | PreviewReadyEvent
   | ProjectCompleteEvent
   | CodeGeneratedEvent

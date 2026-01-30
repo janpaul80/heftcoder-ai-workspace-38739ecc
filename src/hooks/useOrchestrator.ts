@@ -14,6 +14,11 @@ export interface OrchestratorState {
   generatedProject: GeneratedProject | null;
   clarifyingQuestions: ClarifyingQuestion[];
   agentMessages: Array<{ agent: string; message: string }>;
+  backendArtifacts: {
+    migrations: Array<{ filename: string; content: string }>;
+    edgeFunctions: Array<{ filename: string; content: string }>;
+    secretsRequired: string[];
+  };
 }
 
 export function useOrchestrator() {
@@ -28,6 +33,11 @@ export function useOrchestrator() {
   const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
   const [clarifyingQuestions, setClarifyingQuestions] = useState<ClarifyingQuestion[]>([]);
   const [agentMessages, setAgentMessages] = useState<Array<{ agent: string; message: string }>>([]);
+  const [backendArtifacts, setBackendArtifacts] = useState<{
+    migrations: Array<{ filename: string; content: string }>;
+    edgeFunctions: Array<{ filename: string; content: string }>;
+    secretsRequired: string[];
+  }>({ migrations: [], edgeFunctions: [], secretsRequired: [] });
 
   const streamEvents = useCallback(async (url: string, body: object) => {
     const response = await fetch(url, {
@@ -115,6 +125,44 @@ export function useOrchestrator() {
                 ],
               };
             });
+          } else if (event.type === "migration_generated") {
+            console.log("[useOrchestrator] Migration generated:", event.filename);
+            setBackendArtifacts(prev => ({
+              ...prev,
+              migrations: [...prev.migrations, { filename: event.filename, content: event.file.content }],
+            }));
+            // Also add to project files
+            setGeneratedProject(prev => {
+              const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
+              return {
+                ...existing,
+                files: [...existing.files, { path: event.filename, content: event.file.content, language: "sql" }],
+              };
+            });
+          } else if (event.type === "edge_function_generated") {
+            console.log("[useOrchestrator] Edge function generated:", event.filename);
+            setBackendArtifacts(prev => ({
+              ...prev,
+              edgeFunctions: [...prev.edgeFunctions, { filename: event.filename, content: event.file.content }],
+            }));
+            // Also add to project files
+            setGeneratedProject(prev => {
+              const existing = prev || { name: "Generated Project", type: "landing" as const, files: [] };
+              return {
+                ...existing,
+                files: [...existing.files, { path: event.filename, content: event.file.content, language: "typescript" }],
+              };
+            });
+          } else if (event.type === "secrets_required") {
+            console.log("[useOrchestrator] Secrets required:", event.secrets);
+            setBackendArtifacts(prev => ({
+              ...prev,
+              secretsRequired: [...prev.secretsRequired, ...event.secrets],
+            }));
+            setAgentMessages(prev => [...prev, { 
+              agent: "Backend", 
+              message: `⚠️ Required secrets: ${event.secrets.join(", ")}` 
+            }]);
           } else if (event.type === "preview_ready") {
             setGeneratedProject(prev => ({
               ...prev,
@@ -321,6 +369,7 @@ export function useOrchestrator() {
     setClarifyingQuestions([]);
     setAgentMessages([]);
     setConversationHistory([]);
+    setBackendArtifacts({ migrations: [], edgeFunctions: [], secretsRequired: [] });
   }, []);
 
   return {
@@ -333,6 +382,7 @@ export function useOrchestrator() {
     generatedProject,
     clarifyingQuestions,
     agentMessages,
+    backendArtifacts,
     requestPlan,
     answerQuestions,
     rejectPlan,
