@@ -17,6 +17,7 @@ interface ChatPanelProps {
   agents?: Record<string, AgentInfo>;
   phase?: OrchestratorPhase;
   onRegenerate?: () => void;
+  onCancelGeneration?: () => void;
 }
 
 export function ChatPanel({ 
@@ -27,7 +28,8 @@ export function ChatPanel({
   isLoading, 
   agents = {}, 
   phase = 'idle',
-  onRegenerate
+  onRegenerate,
+  onCancelGeneration
 }: ChatPanelProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -67,7 +69,7 @@ export function ChatPanel({
       <div className="flex-1 overflow-y-auto scrollbar-thin p-4 space-y-4">
         {/* Agent Progress Bar - inline in chat */}
         {phase !== 'idle' && Object.keys(agents).length > 0 && (
-          <AgentProgressBar agents={agents} phase={phase} />
+          <AgentProgressBar agents={agents} phase={phase} onCancel={onCancelGeneration} />
         )}
         {messages.map((message, index) => (
           <ChatMessage 
