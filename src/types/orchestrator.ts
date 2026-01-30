@@ -23,11 +23,15 @@ export interface ProjectPlan {
   projectName: string;
   projectType: ProjectType;
   description: string;
+  designDirection?: string;
   techStack: {
     frontend: string[];
     backend: string[];
     database: string;
+    auth?: string[];
+    apis?: string[];
   };
+  secrets_needed?: string[];
   steps: PlanStep[];
   estimatedTime: string;
 }

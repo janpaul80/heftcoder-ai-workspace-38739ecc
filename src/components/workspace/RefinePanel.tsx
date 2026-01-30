@@ -12,23 +12,35 @@ interface RefinePanelProps {
   isRefining?: boolean;
 }
 
-const QUICK_REFINEMENTS = [
+// Design refinements
+const DESIGN_REFINEMENTS = [
   "Make it more modern and minimal",
   "Add more visual impact with animations",
-  "Make the colors bolder and more vibrant",
-  "Improve mobile responsiveness",
+  "Make the colors bolder and vibrant",
   "Add a dark mode version",
-  "Make the hero section more engaging",
 ];
+
+// Backend/Full-stack refinements
+const BACKEND_REFINEMENTS = [
+  "Add user authentication",
+  "Add database storage",
+  "Connect to external API",
+  "Add payment processing",
+];
+
+// Combined for display
+const QUICK_REFINEMENTS = [...DESIGN_REFINEMENTS, ...BACKEND_REFINEMENTS];
 
 // Shorter labels for mobile
 const QUICK_REFINEMENTS_SHORT = [
-  "More modern",
-  "Add animations",
-  "Bolder colors",
-  "Better mobile",
+  "Modern style",
+  "Animations",
+  "Bold colors",
   "Dark mode",
-  "Better hero",
+  "Add auth",
+  "Add database",
+  "External API",
+  "Payments",
 ];
 
 export function RefinePanel({ onRefine, onStartOver, isRefining }: RefinePanelProps) {
