@@ -90,9 +90,12 @@ function ProjectTypeBadge({ type }: { type: ProjectType }) {
     landing: { label: 'Landing Page', color: 'bg-emerald-500/20 text-emerald-400' },
     webapp: { label: 'Web App', color: 'bg-blue-500/20 text-blue-400' },
     native: { label: 'Native App', color: 'bg-purple-500/20 text-purple-400' },
+    saas: { label: 'SaaS', color: 'bg-amber-500/20 text-amber-400' },
   };
   
-  const { label, color } = labels[type];
+  // Fallback to webapp if type is undefined or not recognized
+  const safeType = type && labels[type] ? type : 'webapp';
+  const { label, color } = labels[safeType];
   
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", color)}>

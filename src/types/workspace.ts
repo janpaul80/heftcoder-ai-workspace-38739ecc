@@ -27,7 +27,7 @@ export interface ProjectStatus {
 
 export type UserTier = 'basic' | 'plus' | 'pro' | 'studio';
 
-export type ProjectType = 'landing' | 'webapp' | 'native';
+export type ProjectType = 'landing' | 'webapp' | 'native' | 'saas';
 
 export interface GeneratedFile {
   path: string;
