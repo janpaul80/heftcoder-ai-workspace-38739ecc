@@ -593,6 +593,16 @@ async function callLovableAI(
 }
 
 // ============= PRIMARY LANGDOCK API CALL =============
+// Agent-specific timeouts for optimal speed vs quality tradeoff
+
+const AGENT_TIMEOUTS: Record<string, number> = {
+  architect: 8000,   // 8s - must be FAST, fallback quickly
+  backend: 30000,    // 30s - needs time for complex schemas
+  frontend: 45000,   // 45s - generates most code
+  integrator: 20000, // 20s - moderate complexity
+  qa: 15000,         // 15s - quick review
+  devops: 10000,     // 10s - simple checks
+};
 
 async function callLangdockAssistant(
   agentKey: string,
@@ -621,7 +631,9 @@ async function callLangdockAssistant(
   const agentPrompt = AGENT_PROMPTS[agentKey as keyof typeof AGENT_PROMPTS] || "";
   const fullMessage = `${agentPrompt}\n\n---\n\nUser Request:\n${message}${additionalContext ? `\n\nAdditional Context:\n${additionalContext}` : ""}`;
 
-  console.log(`[Langdock] Calling assistant for agent: ${agentKey}, assistantId: ${assistantId.slice(0, 8)}...`);
+  // Use agent-specific timeout (architect = 8s for speed)
+  const timeout = AGENT_TIMEOUTS[agentKey] || 30000;
+  console.log(`[Langdock] Calling ${agentKey} (timeout: ${timeout/1000}s), assistantId: ${assistantId.slice(0, 8)}...`);
   
   try {
     const response = await fetchWithTimeout(LANGDOCK_ASSISTANT_API_URL, {
@@ -636,7 +648,7 @@ async function callLangdockAssistant(
           { role: "user", content: fullMessage }
         ],
       }),
-    }, 45000); // 45s timeout - backend/frontend agents need more time
+    }, timeout);
 
     // Check for errors that should trigger fallback
     if (!response.ok) {
