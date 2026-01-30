@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -205,13 +206,45 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
 
   if (secrets.length === 0) return null;
 
-  // If still checking existing secrets, show loading
+  // If still checking existing secrets, show skeleton loading state
   if (isCheckingExisting) {
     return (
-      <Card className="border-amber-500/30 bg-amber-500/5 backdrop-blur-sm">
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-amber-400 mr-2" />
-          <span className="text-sm text-muted-foreground">Checking configured secrets...</span>
+      <Card className="border-amber-500/30 bg-amber-500/5 backdrop-blur-sm animate-fade-in">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base text-amber-400">
+            <AlertTriangle className="h-5 w-5" />
+            API Keys Required
+          </CardTitle>
+          <Skeleton className="h-4 w-3/4 bg-muted/30" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Skeleton for secret inputs */}
+          {[1, 2, 3].slice(0, Math.min(secrets.length, 3)).map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-3.5 w-3.5 rounded bg-muted/30" />
+                  <Skeleton className="h-4 w-32 bg-muted/30" />
+                </div>
+                <Skeleton className="h-3 w-20 bg-muted/30" />
+              </div>
+              <Skeleton className="h-3 w-2/3 bg-muted/30" />
+              <div className="flex gap-2">
+                <Skeleton className="h-10 flex-1 bg-muted/30" />
+                <Skeleton className="h-10 w-20 bg-muted/30" />
+              </div>
+            </div>
+          ))}
+          
+          {/* Skeleton for buttons */}
+          <div className="flex gap-2 pt-2">
+            <Skeleton className="h-10 flex-1 bg-muted/30" />
+            <Skeleton className="h-10 w-24 bg-muted/30" />
+          </div>
+          
+          <div className="flex justify-center">
+            <Skeleton className="h-3 w-48 bg-muted/30" />
+          </div>
         </CardContent>
       </Card>
     );
