@@ -28,18 +28,18 @@ const AGENT_LABELS: Record<string, string> = {
   devops: 'DevOps',
 };
 
-// Estimated times per agent in seconds
+// Estimated times per agent in seconds (reduced to match new backend timeouts)
 const AGENT_ESTIMATED_TIMES: Record<string, number> = {
-  architect: 10,
-  backend: 25,
-  frontend: 35,
-  integrator: 20,
-  qa: 15,
-  devops: 10,
+  architect: 6,
+  backend: 15,
+  frontend: 20,
+  integrator: 10,
+  qa: 8,
+  devops: 5,
 };
 
-// Total pipeline timeout in seconds
-const TOTAL_PIPELINE_TIMEOUT = 90;
+// Total pipeline timeout in seconds (matches backend MAX_PIPELINE_TIMEOUT)
+const TOTAL_PIPELINE_TIMEOUT = 60;
 
 const getStatusIcon = (status: AgentStatus, isActive: boolean) => {
   if (status === 'complete') {

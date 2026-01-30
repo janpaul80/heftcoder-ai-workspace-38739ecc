@@ -10,7 +10,7 @@ const POLL_INTERVAL = 1500;
 const MAX_POLL_TIME = 120000; // 2 minutes max
 
 // Stream timeout - if no data received for this long, consider it stalled
-const STREAM_TIMEOUT = 60000; // 60 seconds without data = stalled
+const STREAM_TIMEOUT = 30000; // 30 seconds without data = stalled (reduced from 60s)
 
 interface PlanningJob {
   id: string;
