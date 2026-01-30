@@ -4,3 +4,9 @@ project_id = "ayrqoqzrjximjotyevqh"
 
 [functions.orchestrator]
 verify_jwt = false
+
+[functions.save-secrets]
+verify_jwt = false
+
+[functions.serve-published]
+verify_jwt = false

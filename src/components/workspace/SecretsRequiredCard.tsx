@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { AlertTriangle, Key, Plus, Check, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Key, Plus, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface SecretsRequiredCardProps {
   secrets: string[];
@@ -12,27 +14,128 @@ interface SecretsRequiredCardProps {
   onSkip?: () => void;
 }
 
+interface SaveSecretsResponse {
+  success: boolean;
+  savedSecrets: string[];
+  errors?: string[];
+  message: string;
+  error?: string;
+}
+
 export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: SecretsRequiredCardProps) {
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [addedSecrets, setAddedSecrets] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [savingSecret, setSavingSecret] = useState<string | null>(null);
 
   const handleSecretChange = (secretName: string, value: string) => {
     setSecretValues(prev => ({ ...prev, [secretName]: value }));
   };
 
-  const handleAddSecret = (secretName: string) => {
-    if (secretValues[secretName]?.trim()) {
-      setAddedSecrets(prev => new Set([...prev, secretName]));
+  const handleAddSecret = async (secretName: string) => {
+    const value = secretValues[secretName]?.trim();
+    if (!value) return;
+
+    setSavingSecret(secretName);
+
+    try {
+      // Save individual secret to backend
+      const { data, error } = await supabase.functions.invoke<SaveSecretsResponse>('save-secrets', {
+        body: { secrets: { [secretName]: value } }
+      });
+
+      if (error) {
+        console.error('Error saving secret:', error);
+        toast.error(`Failed to save ${secretName}: ${error.message}`);
+        return;
+      }
+
+      if (data?.success) {
+        setAddedSecrets(prev => new Set([...prev, secretName]));
+        toast.success(`${secretName} saved securely`);
+      } else if (data?.error) {
+        toast.error(`Failed to save ${secretName}: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Error saving secret:', err);
+      toast.error(`Failed to save ${secretName}`);
+    } finally {
+      setSavingSecret(null);
     }
   };
 
   const allSecretsAdded = secrets.every(s => addedSecrets.has(s));
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!allSecretsAdded) return;
     setIsSubmitting(true);
-    onSecretsAdded?.(secretValues);
+
+    try {
+      // All secrets already saved individually, just notify parent
+      onSecretsAdded?.(secretValues);
+      toast.success('All secrets saved successfully!');
+    } catch (err) {
+      console.error('Error completing secrets:', err);
+      toast.error('Failed to complete secrets setup');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    // Collect all unsaved secrets with values
+    const unsavedSecrets: Record<string, string> = {};
+    for (const secretName of secrets) {
+      if (!addedSecrets.has(secretName) && secretValues[secretName]?.trim()) {
+        unsavedSecrets[secretName] = secretValues[secretName].trim();
+      }
+    }
+
+    if (Object.keys(unsavedSecrets).length === 0) {
+      toast.error('Please enter values for all required secrets');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const { data, error } = await supabase.functions.invoke<SaveSecretsResponse>('save-secrets', {
+        body: { secrets: unsavedSecrets }
+      });
+
+      if (error) {
+        console.error('Error saving secrets:', error);
+        toast.error(`Failed to save secrets: ${error.message}`);
+        return;
+      }
+
+      if (data?.success && data.savedSecrets) {
+        // Mark all saved secrets
+        setAddedSecrets(prev => new Set([...prev, ...data.savedSecrets]));
+        
+        if (data.errors && data.errors.length > 0) {
+          toast.warning(`Saved ${data.savedSecrets.length} secrets, but had issues: ${data.errors.join(', ')}`);
+        } else {
+          toast.success(data.message);
+        }
+
+        // If all secrets are now added, notify parent
+        const allNowAdded = secrets.every(s => 
+          addedSecrets.has(s) || data.savedSecrets.includes(s)
+        );
+        
+        if (allNowAdded) {
+          onSecretsAdded?.(secretValues);
+        }
+      } else if (data?.error) {
+        toast.error(data.error);
+      }
+    } catch (err) {
+      console.error('Error saving secrets:', err);
+      toast.error('Failed to save secrets');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getSecretDescription = (secretName: string): string => {
@@ -44,22 +147,28 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
       'ANTHROPIC_API_KEY': 'Your Anthropic/Claude API key',
       'SENDGRID_API_KEY': 'SendGrid API key for email services',
       'TWILIO_AUTH_TOKEN': 'Twilio auth token for SMS/voice',
+      'RESEND_API_KEY': 'Resend API key for email services',
+      'MAILGUN_API_KEY': 'Mailgun API key for email services',
     };
     return descriptions[secretName] || `API key or secret for ${secretName}`;
   };
 
   const getSecretLink = (secretName: string): { url: string; label: string } | null => {
     const links: Record<string, { url: string; label: string }> = {
-      'STRIPE_SECRET_KEY': { url: 'https://dashboard.stripe.com/apikeys', label: 'Get from Stripe Dashboard' },
-      'STRIPE_WEBHOOK_SECRET': { url: 'https://dashboard.stripe.com/webhooks', label: 'Get from Stripe Webhooks' },
+      'STRIPE_SECRET_KEY': { url: 'https://dashboard.stripe.com/apikeys', label: 'Get from Stripe' },
+      'STRIPE_WEBHOOK_SECRET': { url: 'https://dashboard.stripe.com/webhooks', label: 'Get from Stripe' },
       'OPENAI_API_KEY': { url: 'https://platform.openai.com/api-keys', label: 'Get from OpenAI' },
       'ANTHROPIC_API_KEY': { url: 'https://console.anthropic.com/', label: 'Get from Anthropic' },
       'SENDGRID_API_KEY': { url: 'https://app.sendgrid.com/settings/api_keys', label: 'Get from SendGrid' },
+      'RESEND_API_KEY': { url: 'https://resend.com/api-keys', label: 'Get from Resend' },
+      'MAILGUN_API_KEY': { url: 'https://app.mailgun.com/app/account/security/api_keys', label: 'Get from Mailgun' },
     };
     return links[secretName] || null;
   };
 
   if (secrets.length === 0) return null;
+
+  const hasAnyValues = secrets.some(s => secretValues[s]?.trim() && !addedSecrets.has(s));
 
   return (
     <Card className="border-amber-500/30 bg-amber-500/5 backdrop-blur-sm">
@@ -75,6 +184,7 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
       <CardContent className="space-y-4">
         {secrets.map((secretName) => {
           const isAdded = addedSecrets.has(secretName);
+          const isSaving = savingSecret === secretName;
           const link = getSecretLink(secretName);
           
           return (
@@ -107,7 +217,7 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
                   placeholder={`Enter ${secretName}...`}
                   value={secretValues[secretName] || ''}
                   onChange={(e) => handleSecretChange(secretName, e.target.value)}
-                  disabled={isAdded}
+                  disabled={isAdded || isSaving}
                   className={cn(
                     "flex-1 bg-background/50 border-border/50",
                     isAdded && "opacity-50"
@@ -117,13 +227,18 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
                   variant={isAdded ? "secondary" : "outline"}
                   size="sm"
                   onClick={() => handleAddSecret(secretName)}
-                  disabled={isAdded || !secretValues[secretName]?.trim()}
-                  className="shrink-0"
+                  disabled={isAdded || isSaving || !secretValues[secretName]?.trim()}
+                  className="shrink-0 min-w-[80px]"
                 >
-                  {isAdded ? (
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Saving
+                    </>
+                  ) : isAdded ? (
                     <>
                       <Check className="h-4 w-4 mr-1" />
-                      Added
+                      Saved
                     </>
                   ) : (
                     <>
@@ -138,22 +253,51 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
         })}
 
         <div className="flex gap-2 pt-2">
-          <Button
-            onClick={handleSubmit}
-            disabled={!allSecretsAdded || isSubmitting}
-            className="flex-1"
-          >
-            {isSubmitting ? 'Saving...' : 'Continue with Secrets'}
-          </Button>
+          {allSecretsAdded ? (
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="flex-1"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Continuing...
+                </>
+              ) : (
+                'Continue'
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleSaveAll}
+              disabled={isSubmitting || !hasAnyValues}
+              className="flex-1"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving All...
+                </>
+              ) : (
+                'Save All & Continue'
+              )}
+            </Button>
+          )}
           {onSkip && (
-            <Button variant="ghost" onClick={onSkip} className="text-muted-foreground">
+            <Button 
+              variant="ghost" 
+              onClick={onSkip} 
+              className="text-muted-foreground"
+              disabled={isSubmitting}
+            >
               Skip for now
             </Button>
           )}
         </div>
         
         <p className="text-xs text-muted-foreground text-center">
-          Secrets are stored securely and never exposed in client-side code.
+          Secrets are encrypted and stored securely in Lovable Cloud.
         </p>
       </CardContent>
     </Card>
