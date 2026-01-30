@@ -6,9 +6,10 @@ import {
   Loader2, 
   AlertCircle, 
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Clock
 } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface AgentProgressBarProps {
@@ -26,6 +27,19 @@ const AGENT_LABELS: Record<string, string> = {
   qa: 'QA',
   devops: 'DevOps',
 };
+
+// Estimated times per agent in seconds
+const AGENT_ESTIMATED_TIMES: Record<string, number> = {
+  architect: 10,
+  backend: 25,
+  frontend: 35,
+  integrator: 20,
+  qa: 15,
+  devops: 10,
+};
+
+// Total pipeline timeout in seconds
+const TOTAL_PIPELINE_TIMEOUT = 90;
 
 const getStatusIcon = (status: AgentStatus, isActive: boolean) => {
   if (status === 'complete') {
@@ -86,10 +100,57 @@ const AgentStep = memo(function AgentStep({
   );
 });
 
+// Countdown timer hook
+function useCountdownTimer(phase: OrchestratorPhase, agents: Record<string, AgentInfo>) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  
+  // Calculate estimated time based on active agents
+  const estimatedTotal = Object.keys(agents).reduce((total, key) => {
+    return total + (AGENT_ESTIMATED_TIMES[key] || 15);
+  }, 0);
+  
+  const isActive = phase !== 'idle' && phase !== 'complete' && phase !== 'error' && phase !== 'awaiting_approval';
+  
+  useEffect(() => {
+    if (isActive && !startTimeRef.current) {
+      startTimeRef.current = Date.now();
+    }
+    
+    if (!isActive) {
+      startTimeRef.current = null;
+      setElapsedSeconds(0);
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      if (startTimeRef.current) {
+        setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+      }
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [isActive]);
+  
+  const remainingSeconds = Math.max(0, Math.min(estimatedTotal, TOTAL_PIPELINE_TIMEOUT) - elapsedSeconds);
+  const isOvertime = elapsedSeconds > estimatedTotal;
+  
+  return { elapsedSeconds, remainingSeconds, estimatedTotal, isOvertime, isActive };
+}
+
+// Format seconds to mm:ss
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 export const AgentProgressBar = memo(function AgentProgressBar({ 
   agents, 
   phase 
 }: AgentProgressBarProps) {
+  const { elapsedSeconds, remainingSeconds, isOvertime, isActive } = useCountdownTimer(phase, agents);
+  
   if (phase === 'idle') return null;
 
   const agentEntries = Object.entries(agents);
@@ -146,6 +207,26 @@ export const AgentProgressBar = memo(function AgentProgressBar({
             />
           </div>
         </div>
+
+        {/* Countdown timer */}
+        {isActive && (
+          <div className="flex items-center gap-1.5 mb-3">
+            <Clock className={cn(
+              "h-3 w-3",
+              isOvertime ? "text-amber-400" : "text-muted-foreground"
+            )} />
+            <span className={cn(
+              "text-xs tabular-nums font-medium",
+              isOvertime ? "text-amber-400" : "text-muted-foreground"
+            )}>
+              {isOvertime ? (
+                <>+{formatTime(elapsedSeconds)} (taking longer than expected)</>
+              ) : (
+                <>~{formatTime(remainingSeconds)} remaining</>
+              )}
+            </span>
+          </div>
+        )}
 
         {/* Agent steps */}
         <div className="flex items-center gap-1 flex-wrap">
