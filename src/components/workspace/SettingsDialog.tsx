@@ -128,7 +128,7 @@ export function SettingsDialog() {
                 <div>
                   <h3 className="text-sm font-medium">Configured Secrets</h3>
                   <p className="text-xs text-muted-foreground">
-                    API keys and secrets stored in Lovable Cloud
+                    API keys and secrets stored in HeftCoder Cloud
                   </p>
                 </div>
                 <Button
@@ -213,7 +213,7 @@ export function SettingsDialog() {
                   <div className="text-xs text-muted-foreground space-y-1">
                     <p className="flex items-center gap-1">
                       <Shield className="h-3 w-3" />
-                      Secrets are encrypted and stored securely in Lovable Cloud
+                      Secrets are encrypted and stored securely in HeftCoder Cloud
                     </p>
                     <p>
                       Total: {secrets.length} secret{secrets.length !== 1 ? 's' : ''} configured
