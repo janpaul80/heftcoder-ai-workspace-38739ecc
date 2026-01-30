@@ -191,7 +191,7 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
               const link = getSecretLink(secretName);
               
               return (
-                <div key={secretName} className="space-y-2">
+                <div key={secretName} className="space-y-2 relative focus-within:z-10">
                   <div className="flex items-center justify-between">
                     <Label htmlFor={secretName} className="flex items-center gap-2 text-sm font-medium">
                       <Key className="h-3.5 w-3.5 text-muted-foreground" />
@@ -222,7 +222,7 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
                       onChange={(e) => handleSecretChange(secretName, e.target.value)}
                       disabled={isAdded || isSaving}
                       className={cn(
-                        "flex-1 bg-background/50 border-border/50",
+                        "flex-1 bg-background/50 border-border/50 focus:relative focus:z-10",
                         isAdded && "opacity-50"
                       )}
                     />
