@@ -302,8 +302,31 @@ export function WorkspaceEditor() {
         {/* Mobile Content */}
         <div className="flex-1 overflow-hidden">
           {mobileTab === 'chat' ? (
-            <div className="flex flex-col h-full">
-              <div className="flex-1 overflow-hidden">
+            <div className="flex flex-col h-full overflow-hidden">
+              {/* Plan Approval Card - positioned above chat */}
+              {showApproval && (
+                <div className="flex-shrink-0 p-3 border-b border-border bg-background/95 backdrop-blur-sm max-h-[50vh] overflow-y-auto z-10">
+                  <PlanApprovalCard
+                    plan={plan}
+                    onApprove={handleApprove}
+                    onReject={handleReject}
+                    onAskQuestion={handleAskQuestion}
+                  />
+                </div>
+              )}
+
+              {/* Refine Panel - positioned above chat */}
+              {showRefine && (
+                <div className="flex-shrink-0 p-3 border-b border-border bg-background/95 backdrop-blur-sm z-10">
+                  <RefinePanel
+                    onRefine={handleRefine}
+                    onStartOver={handleStartOver}
+                    isRefining={isRefining}
+                  />
+                </div>
+              )}
+
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <ChatPanel
                   messages={messages}
                   onSendMessage={handleSendMessage}
@@ -314,29 +337,6 @@ export function WorkspaceEditor() {
                   phase={phase}
                 />
               </div>
-              
-              {/* Plan Approval Card */}
-              {showApproval && (
-                <div className="p-3 border-t border-border bg-background/95 backdrop-blur max-h-[60vh] overflow-y-auto">
-                  <PlanApprovalCard
-                    plan={plan}
-                    onApprove={handleApprove}
-                    onReject={handleReject}
-                    onAskQuestion={handleAskQuestion}
-                  />
-                </div>
-              )}
-
-              {/* Refine Panel */}
-              {showRefine && (
-                <div className="p-3 border-t border-border bg-background/95 backdrop-blur">
-                  <RefinePanel
-                    onRefine={handleRefine}
-                    onStartOver={handleStartOver}
-                    isRefining={isRefining}
-                  />
-                </div>
-              )}
             </div>
           ) : (
             <PreviewPanel 
@@ -365,8 +365,31 @@ export function WorkspaceEditor() {
 
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         <ResizablePanel defaultSize={40} minSize={25} maxSize={55}>
-          <div className="flex flex-col h-full">
-            <div className="flex-1 overflow-hidden">
+          <div className="flex flex-col h-full overflow-hidden">
+            {/* Plan Approval Card - positioned above chat */}
+            {showApproval && (
+              <div className="flex-shrink-0 p-4 border-b border-border bg-background/95 backdrop-blur-sm z-10">
+                <PlanApprovalCard
+                  plan={plan}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                  onAskQuestion={handleAskQuestion}
+                />
+              </div>
+            )}
+
+            {/* Refine Panel - positioned above chat */}
+            {showRefine && (
+              <div className="flex-shrink-0 p-4 border-b border-border bg-background/95 backdrop-blur-sm z-10">
+                <RefinePanel
+                  onRefine={handleRefine}
+                  onStartOver={handleStartOver}
+                  isRefining={isRefining}
+                />
+              </div>
+            )}
+
+            <div className="flex-1 min-h-0 overflow-hidden">
               <ChatPanel
                 messages={messages}
                 onSendMessage={handleSendMessage}
@@ -377,29 +400,6 @@ export function WorkspaceEditor() {
                 phase={phase}
               />
             </div>
-            
-            {/* Plan Approval Card */}
-            {showApproval && (
-              <div className="p-4 border-t border-border bg-background/95 backdrop-blur">
-                <PlanApprovalCard
-                  plan={plan}
-                  onApprove={handleApprove}
-                  onReject={handleReject}
-                  onAskQuestion={handleAskQuestion}
-                />
-              </div>
-            )}
-
-            {/* Refine Panel */}
-            {showRefine && (
-              <div className="p-4 border-t border-border bg-background/95 backdrop-blur">
-                <RefinePanel
-                  onRefine={handleRefine}
-                  onStartOver={handleStartOver}
-                  isRefining={isRefining}
-                />
-              </div>
-            )}
           </div>
         </ResizablePanel>
 
