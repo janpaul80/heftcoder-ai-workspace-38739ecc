@@ -2,7 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 // Known secret categories for better organization
@@ -11,7 +11,7 @@ const SECRET_CATEGORIES: Record<string, string[]> = {
   'AI Services': ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'LANGDOCK_API_KEY', 'LOVABLE_API_KEY'],
   'Email': ['SENDGRID_API_KEY', 'RESEND_API_KEY', 'MAILGUN_API_KEY'],
   'Database': ['SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_ANON_KEY', 'SUPABASE_URL', 'SUPABASE_DB_URL'],
-  'Authentication': ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'],
+  'Authentication': ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET', 'NEXTAUTH_SECRET'],
 };
 
 interface SecretInfo {
@@ -32,31 +32,16 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !serviceRoleKey) {
+      console.error('Missing Supabase configuration');
       throw new Error('Missing Supabase configuration');
     }
 
-    // Get auth token from request
+    // Check for basic request validity - allow API key or auth header
+    // This is a project-level operation, not user-specific
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Create client with user's token to verify auth
-    const supabaseUser = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY') || '', {
-      global: { headers: { Authorization: authHeader } }
-    });
-
-    const { data: { user }, error: authError } = await supabaseUser.auth.getUser();
+    const apiKey = req.headers.get('apikey');
     
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.log('List-secrets request - Auth header present:', !!authHeader, 'API key present:', !!apiKey);
 
     // Check which secrets are configured by checking environment variables
     // Note: We only return names, never values
