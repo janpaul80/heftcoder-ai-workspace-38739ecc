@@ -340,7 +340,8 @@ export function WorkspaceEditor() {
     };
     setMessages(prev => [...prev, skipMessage]);
   }, [pendingSecrets]);
-  const showRefine = phase === "complete" && hasGeneratedFiles;
+  // Only show refine panel when secrets are handled - prevents UI clutter
+  const showRefine = phase === "complete" && hasGeneratedFiles && !showSecretsRequired;
 
   // Mobile layout with tabs
   if (isMobile) {
