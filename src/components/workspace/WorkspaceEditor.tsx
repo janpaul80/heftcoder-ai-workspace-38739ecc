@@ -48,7 +48,8 @@ export function WorkspaceEditor() {
     askQuestion,
     approvePlan,
     refineProject,
-    reset 
+    reset,
+    cancel
   } = useOrchestrator();
 
   // Update status when project is generated
@@ -304,6 +305,19 @@ export function WorkspaceEditor() {
     setMobileTab('chat');
   }, [reset]);
 
+  const handleCancelGeneration = useCallback(() => {
+    cancel();
+    const cancelMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `⛔ **Generation cancelled.**\n\nYou can start a new project or modify your request.`,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, cancelMessage]);
+    setProjectStatus({ status: 'idle' });
+    setIsLoading(false);
+  }, [cancel]);
+
   const isActive = phase !== "idle" && phase !== "complete" && phase !== "error" && phase !== "awaiting_approval" && phase !== "clarifying";
   const isRefining = phase === "building"; // Use building phase for refinements too
   const hasGeneratedFiles = generatedProject && generatedProject.files.length > 0;
@@ -440,6 +454,7 @@ export function WorkspaceEditor() {
                   isLoading={isLoading}
                   agents={agents}
                   phase={phase}
+                  onCancelGeneration={handleCancelGeneration}
                 />
               </div>
             </div>
@@ -525,6 +540,7 @@ export function WorkspaceEditor() {
                 isLoading={isLoading}
                 agents={agents}
                 phase={phase}
+                onCancelGeneration={handleCancelGeneration}
               />
             </div>
           </div>

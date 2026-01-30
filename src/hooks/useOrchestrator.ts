@@ -59,18 +59,24 @@ export function useOrchestrator() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const pollStartRef = useRef<number>(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Cleanup polling on unmount
+  // Cleanup polling and abort on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
         clearTimeout(pollingRef.current);
       }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
   }, []);
 
   const streamEvents = useCallback(async (url: string, body: object) => {
+    // Create new abort controller and store in ref for external cancellation
     const controller = new AbortController();
+    abortControllerRef.current = controller;
     let lastDataTime = Date.now();
     
     // Timeout check - abort if no data received for too long
@@ -517,13 +523,27 @@ export function useOrchestrator() {
     }
   }, [generatedProject, plan, originalMessage, streamEvents]);
 
-  const reset = useCallback(() => {
+  const cancel = useCallback(() => {
+    // Abort any ongoing stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     // Cancel any ongoing polling
     if (pollingRef.current) {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
     }
     setCurrentJobId(null);
+    setPhase("idle");
+    setError("Generation cancelled by user");
+    setAgents({});
+  }, []);
+
+  const reset = useCallback(() => {
+    // Cancel any ongoing operations first
+    cancel();
+    
     setAgents({});
     setPlan(null);
     setPhase("idle");
@@ -536,7 +556,7 @@ export function useOrchestrator() {
     setAgentMessages([]);
     setConversationHistory([]);
     setBackendArtifacts({ migrations: [], edgeFunctions: [], secretsRequired: [] });
-  }, []);
+  }, [cancel]);
 
   return {
     agents,
@@ -556,5 +576,6 @@ export function useOrchestrator() {
     approvePlan,
     refineProject,
     reset,
+    cancel,
   };
 }

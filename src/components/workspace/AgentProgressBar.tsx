@@ -7,7 +7,8 @@ import {
   AlertCircle, 
   ArrowRight,
   Sparkles,
-  Clock
+  Clock,
+  X
 } from 'lucide-react';
 import { memo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 interface AgentProgressBarProps {
   agents: Record<string, AgentInfo>;
   phase: OrchestratorPhase;
+  onCancel?: () => void;
 }
 
 const AGENT_ORDER = ['architect', 'backend', 'frontend', 'integrator', 'qa', 'devops'];
@@ -147,9 +149,11 @@ function formatTime(seconds: number): string {
 
 export const AgentProgressBar = memo(function AgentProgressBar({ 
   agents, 
-  phase 
+  phase,
+  onCancel
 }: AgentProgressBarProps) {
   const { elapsedSeconds, remainingSeconds, isOvertime, isActive } = useCountdownTimer(phase, agents);
+  const canCancel = isActive && onCancel;
   
   if (phase === 'idle') return null;
 
@@ -180,7 +184,7 @@ export const AgentProgressBar = memo(function AgentProgressBar({
       >
         {/* Progress bar */}
         <div className="mb-3">
-          <div className="flex items-center justify-between mb-1.5">
+        <div className="flex items-center justify-between mb-1.5">
             <span className="text-xs font-medium text-foreground flex items-center gap-2">
               <Bot className="h-3.5 w-3.5 text-primary" />
               Agent Orchestra
@@ -191,9 +195,21 @@ export const AgentProgressBar = memo(function AgentProgressBar({
                 </span>
               )}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {completedCount}/{totalCount} complete
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                {completedCount}/{totalCount} complete
+              </span>
+              {canCancel && (
+                <button
+                  onClick={onCancel}
+                  className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-destructive hover:text-destructive/80 hover:bg-destructive/10 rounded transition-colors"
+                  title="Cancel generation"
+                >
+                  <X className="h-3 w-3" />
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <motion.div
