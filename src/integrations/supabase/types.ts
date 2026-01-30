@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      planning_jobs: {
+        Row: {
+          clarifying_questions: Json | null
+          created_at: string
+          error: string | null
+          id: string
+          plan: Json | null
+          progress: number
+          prompt: string
+          result: Json | null
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          clarifying_questions?: Json | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          plan?: Json | null
+          progress?: number
+          prompt: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          clarifying_questions?: Json | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          plan?: Json | null
+          progress?: number
+          prompt?: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       project_history: {
         Row: {
           created_at: string
