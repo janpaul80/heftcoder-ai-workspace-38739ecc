@@ -597,12 +597,15 @@ async function callLovableAI(
 
 const AGENT_TIMEOUTS: Record<string, number> = {
   architect: 8000,   // 8s - must be FAST, fallback quickly
-  backend: 30000,    // 30s - needs time for complex schemas
-  frontend: 45000,   // 45s - generates most code
-  integrator: 20000, // 20s - moderate complexity
-  qa: 15000,         // 15s - quick review
-  devops: 10000,     // 10s - simple checks
+  backend: 20000,    // 20s - reduced from 30s to prevent stalls
+  frontend: 30000,   // 30s - reduced from 45s
+  integrator: 15000, // 15s - reduced from 20s
+  qa: 10000,         // 10s - reduced from 15s
+  devops: 8000,      // 8s - reduced from 10s
 };
+
+// Maximum total execution time for the entire pipeline (prevents infinite stalls)
+const MAX_PIPELINE_TIMEOUT = 90000; // 90 seconds total
 
 async function callLangdockAssistant(
   agentKey: string,
@@ -1640,12 +1643,31 @@ Files: ${this.state.files.length} total (${migrations} migrations, ${edgeFns} ed
 
     this.send({ type: "agents_init", agents: this.agentTasks });
 
-    const hasBackend = plan.steps.some(s => s.agent === "backend");
-    
-    if (hasBackend) {
-      await this.handleToolCall("handoff_to_backend", { plan_json: plan, message });
-    } else {
-      await this.handleToolCall("handoff_to_frontend", { plan_json: plan, message });
+    // Wrap execution in a global timeout to prevent infinite stalls
+    const executionPromise = (async () => {
+      const hasBackend = plan.steps.some(s => s.agent === "backend");
+      
+      if (hasBackend) {
+        await this.handleToolCall("handoff_to_backend", { plan_json: plan, message });
+      } else {
+        await this.handleToolCall("handoff_to_frontend", { plan_json: plan, message });
+      }
+    })();
+
+    // Race against global timeout
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Pipeline execution timed out after 90 seconds")), MAX_PIPELINE_TIMEOUT);
+    });
+
+    try {
+      await Promise.race([executionPromise, timeoutPromise]);
+    } catch (err) {
+      console.error("[Orchestration] Execution timeout or error:", err);
+      this.send({
+        type: "error",
+        message: err instanceof Error ? err.message : "Execution failed - please try again",
+        build: BUILD_ID,
+      });
     }
   }
 
