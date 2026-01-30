@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, Key, Plus, Check, ExternalLink, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,11 +23,47 @@ interface SaveSecretsResponse {
   error?: string;
 }
 
+interface ListSecretsResponse {
+  success: boolean;
+  secrets: { name: string; category: string; isConfigured: boolean }[];
+  error?: string;
+}
+
 export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: SecretsRequiredCardProps) {
   const [secretValues, setSecretValues] = useState<Record<string, string>>({});
   const [addedSecrets, setAddedSecrets] = useState<Set<string>>(new Set());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [savingSecret, setSavingSecret] = useState<string | null>(null);
+  const [isCheckingExisting, setIsCheckingExisting] = useState(true);
+
+  // Check which secrets are already configured on mount
+  useEffect(() => {
+    const checkExistingSecrets = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke<ListSecretsResponse>('list-secrets');
+        
+        if (!error && data?.success && data.secrets) {
+          const existingSecretNames = new Set(
+            data.secrets
+              .filter(s => s.isConfigured)
+              .map(s => s.name)
+          );
+          
+          // Mark any required secrets that are already configured
+          const alreadyConfigured = secrets.filter(s => existingSecretNames.has(s));
+          if (alreadyConfigured.length > 0) {
+            setAddedSecrets(new Set(alreadyConfigured));
+          }
+        }
+      } catch (err) {
+        console.error('Error checking existing secrets:', err);
+      } finally {
+        setIsCheckingExisting(false);
+      }
+    };
+
+    checkExistingSecrets();
+  }, [secrets]);
 
   const handleSecretChange = (secretName: string, value: string) => {
     setSecretValues(prev => ({ ...prev, [secretName]: value }));
@@ -168,6 +204,18 @@ export function SecretsRequiredCard({ secrets, onSecretsAdded, onSkip }: Secrets
   };
 
   if (secrets.length === 0) return null;
+
+  // If still checking existing secrets, show loading
+  if (isCheckingExisting) {
+    return (
+      <Card className="border-amber-500/30 bg-amber-500/5 backdrop-blur-sm">
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-amber-400 mr-2" />
+          <span className="text-sm text-muted-foreground">Checking configured secrets...</span>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const hasAnyValues = secrets.some(s => secretValues[s]?.trim() && !addedSecrets.has(s));
 
