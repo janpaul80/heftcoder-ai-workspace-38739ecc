@@ -6,6 +6,7 @@ import { FileExplorerModal } from './FileExplorerModal';
 import { PlanApprovalCard } from './PlanApprovalCard';
 import { RefinePanel } from './RefinePanel';
 import { ClarifyingQuestionsCard } from './ClarifyingQuestionsCard';
+import { SecretsRequiredCard } from './SecretsRequiredCard';
 import { useOrchestrator } from '@/hooks/useOrchestrator';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { Message, Attachment, ProjectStatus, UserTier, GeneratedProject } from '@/types/workspace';
@@ -26,6 +27,7 @@ export function WorkspaceEditor() {
   const [userTier] = useState<UserTier>('pro');
   const [loadedProject, setLoadedProject] = useState<GeneratedProject | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>('chat');
+  const [secretsHandled, setSecretsHandled] = useState<Set<string>>(new Set());
   
   const isMobile = useIsMobile();
   
@@ -39,6 +41,7 @@ export function WorkspaceEditor() {
     generatedProject,
     clarifyingQuestions,
     agentMessages,
+    backendArtifacts,
     requestPlan,
     answerQuestions,
     rejectPlan,
@@ -307,6 +310,36 @@ export function WorkspaceEditor() {
   const displayProject = loadedProject || generatedProject;
   const showApproval = phase === "awaiting_approval" && plan;
   const showClarifying = phase === "clarifying" && clarifyingQuestions.length > 0;
+  
+  // Filter out already handled secrets
+  const pendingSecrets = backendArtifacts.secretsRequired.filter(s => !secretsHandled.has(s));
+  const showSecretsRequired = pendingSecrets.length > 0;
+
+  const handleSecretsAdded = useCallback((secrets: Record<string, string>) => {
+    // Mark these secrets as handled
+    setSecretsHandled(prev => new Set([...prev, ...Object.keys(secrets)]));
+    
+    // Add a message about secrets being added
+    const secretMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `✅ **Secrets added:** ${Object.keys(secrets).join(', ')}\n\nThese will be securely stored and available to your backend functions.`,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, secretMessage]);
+  }, []);
+
+  const handleSkipSecrets = useCallback(() => {
+    setSecretsHandled(prev => new Set([...prev, ...pendingSecrets]));
+    
+    const skipMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content: `⚠️ **Secrets skipped.** You can add them later in the Cloud settings. Some features may not work without them.`,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, skipMessage]);
+  }, [pendingSecrets]);
   const showRefine = phase === "complete" && hasGeneratedFiles;
 
   // Mobile layout with tabs
@@ -371,6 +404,17 @@ export function WorkspaceEditor() {
                     onApprove={handleApprove}
                     onReject={handleReject}
                     onAskQuestion={handleAskQuestion}
+                  />
+                </div>
+              )}
+
+              {/* Secrets Required - positioned above chat */}
+              {showSecretsRequired && (
+                <div className="flex-shrink-0 p-3 border-b border-border bg-background/95 backdrop-blur-sm max-h-[60vh] overflow-y-auto z-10">
+                  <SecretsRequiredCard
+                    secrets={pendingSecrets}
+                    onSecretsAdded={handleSecretsAdded}
+                    onSkip={handleSkipSecrets}
                   />
                 </div>
               )}
@@ -445,6 +489,17 @@ export function WorkspaceEditor() {
                   onApprove={handleApprove}
                   onReject={handleReject}
                   onAskQuestion={handleAskQuestion}
+                />
+              </div>
+            )}
+
+            {/* Secrets Required - positioned above chat */}
+            {showSecretsRequired && (
+              <div className="flex-shrink-0 p-4 border-b border-border bg-background/95 backdrop-blur-sm max-h-[60vh] overflow-y-auto z-10">
+                <SecretsRequiredCard
+                  secrets={pendingSecrets}
+                  onSecretsAdded={handleSecretsAdded}
+                  onSkip={handleSkipSecrets}
                 />
               </div>
             )}
