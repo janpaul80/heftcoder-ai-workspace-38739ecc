@@ -1,6 +1,9 @@
 // Edge Function: orchestrator
 // Multi-agent orchestration using Langdock Assistant API
 // Lovable Cloud handles orchestration/state/UX, Langdock handles agent execution
+// v7: Async job-based planning with EdgeRuntime.waitUntil for background processing
+
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,7 +11,13 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
-const BUILD_ID = "orch-v6-fast-failover";
+const BUILD_ID = "orch-v7-async-jobs";
+
+// Supabase client for job persistence
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // ============= AI PROVIDER CONFIGURATION =============
 
@@ -1878,6 +1887,99 @@ Provide a helpful, concise answer.`;
   }
 }
 
+// ============= ASYNC JOB PROCESSING =============
+
+interface PlanningJob {
+  id: string;
+  prompt: string;
+  status: string;
+  progress: number;
+  plan?: ProjectPlan;
+  clarifying_questions?: ClarifyingQuestion[];
+  error?: string;
+}
+
+async function processPlanningJob(jobId: string, prompt: string): Promise<void> {
+  console.log(`[Background] Processing job ${jobId}`);
+  
+  try {
+    // Update job status to processing
+    await supabaseAdmin
+      .from("planning_jobs")
+      .update({ status: "processing", progress: 10 })
+      .eq("id", jobId);
+
+    // Call the architect agent
+    const { content } = await callLangdockAssistant("architect", prompt);
+    
+    // Update progress
+    await supabaseAdmin
+      .from("planning_jobs")
+      .update({ progress: 70 })
+      .eq("id", jobId);
+
+    // Check for clarifying questions first
+    const questions = extractClarifyingQuestions(content);
+    if (questions && questions.length > 0) {
+      console.log(`[Background] Job ${jobId} needs clarification - ${questions.length} questions`);
+      await supabaseAdmin
+        .from("planning_jobs")
+        .update({ 
+          status: "clarifying", 
+          progress: 100,
+          clarifying_questions: questions,
+        })
+        .eq("id", jobId);
+      return;
+    }
+
+    // Try to extract plan
+    const plan = extractPlan(content);
+    if (plan && plan.steps && Array.isArray(plan.steps)) {
+      console.log(`[Background] Job ${jobId} complete with plan: ${plan.projectName}`);
+      await supabaseAdmin
+        .from("planning_jobs")
+        .update({ 
+          status: "awaiting_approval", 
+          progress: 100,
+          plan: plan,
+        })
+        .eq("id", jobId);
+      return;
+    }
+
+    // Fallback: create default plan
+    const defaultPlan: ProjectPlan = {
+      projectName: "Generated Project",
+      projectType: "landing",
+      description: prompt,
+      techStack: { frontend: ["HTML", "Tailwind CSS"], backend: [], database: "None" },
+      steps: [{ id: "1", agent: "frontend", task: "Build the project", dependencies: [] }],
+      estimatedTime: "2-3 minutes"
+    };
+    
+    console.log(`[Background] Job ${jobId} using default plan`);
+    await supabaseAdmin
+      .from("planning_jobs")
+      .update({ 
+        status: "awaiting_approval", 
+        progress: 100,
+        plan: defaultPlan,
+      })
+      .eq("id", jobId);
+
+  } catch (error) {
+    console.error(`[Background] Job ${jobId} failed:`, error);
+    await supabaseAdmin
+      .from("planning_jobs")
+      .update({ 
+        status: "failed", 
+        error: error instanceof Error ? error.message : "Unknown error",
+      })
+      .eq("id", jobId);
+  }
+}
+
 // ============= MAIN HANDLER =============
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -1896,12 +1998,77 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    const { action, message, plan, currentCode } = await req.json();
+    const { action, message, plan, currentCode, jobId } = await req.json();
 
     if (action === "diag") {
       return handleDiagnostic();
     }
 
+    // ============= NEW: Async Job-Based Planning =============
+    if (action === "plan_async") {
+      // Create job record immediately (returns in <100ms)
+      const { data: job, error: insertError } = await supabaseAdmin
+        .from("planning_jobs")
+        .insert({ 
+          prompt: message, 
+          status: "pending", 
+          progress: 0 
+        })
+        .select()
+        .single();
+
+      if (insertError || !job) {
+        console.error("[Orchestrator] Failed to create job:", insertError);
+        return new Response(
+          JSON.stringify({ error: "Failed to create planning job" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      console.log(`[Orchestrator] Created job ${job.id}, starting background processing...`);
+
+      // Start background processing (non-blocking)
+      // EdgeRuntime.waitUntil keeps function alive after response is sent
+      // @ts-ignore - EdgeRuntime is available in Supabase Edge Functions
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(processPlanningJob(job.id, message));
+      } else {
+        // Fallback: process inline (but still return quickly)
+        processPlanningJob(job.id, message).catch(console.error);
+      }
+
+      // Return immediately with job ID (<100ms response time!)
+      return new Response(JSON.stringify({
+        jobId: job.id,
+        status: "pending",
+        message: "Planning started. Poll /status endpoint or subscribe to realtime updates.",
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ============= Job Status Check =============
+    if (action === "job_status" && jobId) {
+      const { data: job, error } = await supabaseAdmin
+        .from("planning_jobs")
+        .select("*")
+        .eq("id", jobId)
+        .single();
+
+      if (error || !job) {
+        return new Response(
+          JSON.stringify({ error: "Job not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(JSON.stringify(job), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ============= Original Streaming Implementation (kept for execute/refine) =============
     if (!message && action !== "question") {
       return new Response(
         JSON.stringify({ error: "Message is required" }),
@@ -1919,6 +2086,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const orchestrator = new OrchestrationEngine(send);
 
         if (action === "plan") {
+          // Original streaming plan (kept for compatibility, but slower)
           await orchestrator.startPlanning(message);
         } else if (action === "execute") {
           await orchestrator.startExecution(message, plan as ProjectPlan);

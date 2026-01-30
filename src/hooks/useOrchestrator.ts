@@ -1,8 +1,23 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { AgentInfo, OrchestratorEvent, ProjectPlan, OrchestratorPhase, ClarifyingQuestion } from '@/types/orchestrator';
 import type { GeneratedProject } from '@/types/workspace';
+import { supabase } from '@/integrations/supabase/client';
 
 const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orchestrator`;
+
+// Job polling interval (ms)
+const POLL_INTERVAL = 1500;
+const MAX_POLL_TIME = 120000; // 2 minutes max
+
+interface PlanningJob {
+  id: string;
+  prompt: string;
+  status: 'pending' | 'processing' | 'clarifying' | 'awaiting_approval' | 'complete' | 'failed';
+  progress: number;
+  plan?: ProjectPlan;
+  clarifying_questions?: ClarifyingQuestion[];
+  error?: string;
+}
 
 export interface OrchestratorState {
   agents: Record<string, AgentInfo>;
@@ -38,6 +53,18 @@ export function useOrchestrator() {
     edgeFunctions: Array<{ filename: string; content: string }>;
     secretsRequired: string[];
   }>({ migrations: [], edgeFunctions: [], secretsRequired: [] });
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollStartRef = useRef<number>(0);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) {
+        clearTimeout(pollingRef.current);
+      }
+    };
+  }, []);
 
   const streamEvents = useCallback(async (url: string, body: object) => {
     const response = await fetch(url, {
@@ -209,7 +236,87 @@ export function useOrchestrator() {
     }
   }, []);
 
-  // Phase 1: Request a plan from the Architect
+  // Poll for job status
+  const pollJobStatus = useCallback(async (jobId: string) => {
+    // Check timeout
+    if (Date.now() - pollStartRef.current > MAX_POLL_TIME) {
+      console.log("[useOrchestrator] Polling timeout reached");
+      setError("Planning took too long. Please try again.");
+      setPhase("error");
+      setCurrentJobId(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(ORCHESTRATOR_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ action: "job_status", jobId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Job status check failed: ${response.status}`);
+      }
+
+      const job: PlanningJob = await response.json();
+      console.log("[useOrchestrator] Job status:", job.status, "progress:", job.progress);
+
+      // Update progress in UI
+      setAgents(prev => ({
+        ...prev,
+        architect: {
+          ...prev.architect,
+          statusLabel: job.status === 'processing' 
+            ? `Analyzing requirements (${job.progress}%)...` 
+            : prev.architect?.statusLabel,
+        },
+      }));
+
+      if (job.status === 'clarifying' && job.clarifying_questions) {
+        // Job needs clarification
+        setClarifyingQuestions(job.clarifying_questions);
+        setPhase("clarifying");
+        setAgents(prev => ({
+          ...prev,
+          architect: { ...prev.architect, status: "complete", statusLabel: "Gathering requirements..." },
+        }));
+        setCurrentJobId(null);
+        return;
+      }
+
+      if (job.status === 'awaiting_approval' && job.plan) {
+        // Plan is ready
+        setPlan(job.plan as ProjectPlan);
+        setPhase("awaiting_approval");
+        setAgents(prev => ({
+          ...prev,
+          architect: { ...prev.architect, status: "complete", statusLabel: "Plan ready" },
+        }));
+        setCurrentJobId(null);
+        return;
+      }
+
+      if (job.status === 'failed') {
+        setError(job.error || "Planning failed");
+        setPhase("error");
+        setCurrentJobId(null);
+        return;
+      }
+
+      // Still processing - poll again
+      pollingRef.current = setTimeout(() => pollJobStatus(jobId), POLL_INTERVAL);
+    } catch (e) {
+      console.error("[useOrchestrator] Poll error:", e);
+      setError(e instanceof Error ? e.message : "Polling failed");
+      setPhase("error");
+      setCurrentJobId(null);
+    }
+  }, []);
+
+  // Phase 1: Request a plan from the Architect (async job-based)
   const requestPlan = useCallback(async (message: string) => {
     setPhase("planning");
     setError(null);
@@ -229,20 +336,46 @@ export function useOrchestrator() {
         agentName: "Planner",
         role: "Designing system architecture",
         status: "thinking",
-        statusLabel: "Analyzing requirements...",
+        statusLabel: "Starting planning...",
       },
     });
 
     try {
-      await streamEvents(ORCHESTRATOR_URL, { 
-        action: "plan", 
-        message,
+      // Use new async job-based planning (returns immediately!)
+      const response = await fetch(ORCHESTRATOR_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ action: "plan_async", message }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Orchestrator error: ${response.status} - ${errorText}`);
+      }
+
+      const { jobId } = await response.json();
+      console.log("[useOrchestrator] Job created:", jobId);
+      
+      setCurrentJobId(jobId);
+      pollStartRef.current = Date.now();
+      
+      // Update UI to show we're processing
+      setAgents(prev => ({
+        ...prev,
+        architect: { ...prev.architect, statusLabel: "Analyzing requirements..." },
+      }));
+      
+      // Start polling for job completion
+      pollingRef.current = setTimeout(() => pollJobStatus(jobId), POLL_INTERVAL);
+      
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
       setPhase("error");
     }
-  }, [streamEvents]);
+  }, [pollJobStatus]);
 
   // Answer clarifying questions
   const answerQuestions = useCallback(async (answers: Record<string, string>) => {
@@ -358,6 +491,12 @@ export function useOrchestrator() {
   }, [generatedProject, plan, originalMessage, streamEvents]);
 
   const reset = useCallback(() => {
+    // Cancel any ongoing polling
+    if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
+      pollingRef.current = null;
+    }
+    setCurrentJobId(null);
     setAgents({});
     setPlan(null);
     setPhase("idle");
