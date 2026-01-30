@@ -275,13 +275,17 @@ export function useOrchestrator() {
         },
       }));
 
-      if (job.status === 'clarifying' && job.clarifying_questions) {
-        // Job needs clarification
-        setClarifyingQuestions(job.clarifying_questions);
+      if (job.status === 'clarifying') {
+        // Job needs clarification - parse questions from JSON if needed
+        console.log("[useOrchestrator] Job clarifying, questions:", job.clarifying_questions);
+        const questions = Array.isArray(job.clarifying_questions) 
+          ? job.clarifying_questions 
+          : [];
+        setClarifyingQuestions(questions as ClarifyingQuestion[]);
         setPhase("clarifying");
         setAgents(prev => ({
           ...prev,
-          architect: { ...prev.architect, status: "complete", statusLabel: "Gathering requirements..." },
+          architect: { ...prev.architect, status: "complete", statusLabel: "Questions ready!" },
         }));
         setCurrentJobId(null);
         return;
