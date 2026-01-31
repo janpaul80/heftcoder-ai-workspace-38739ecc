@@ -593,31 +593,38 @@ async function callLovableAI(
 }
 
 // ============= PRIMARY LANGDOCK API CALL =============
-// Agent-specific timeouts for optimal speed vs quality tradeoff
+// Agent-specific timeouts - INCREASED to allow complex e-commerce/SaaS builds
 
 const AGENT_TIMEOUTS: Record<string, number> = {
-  architect: 6000,   // 6s - must be FAST, fallback quickly
-  backend: 15000,    // 15s - reduced to prevent stalls
-  frontend: 20000,   // 20s - reduced significantly
-  integrator: 10000, // 10s - reduced
-  qa: 8000,          // 8s - reduced
-  devops: 5000,      // 5s - reduced
+  architect: 15000,  // 15s - allow time for proper planning
+  backend: 45000,    // 45s - complex DB schemas and edge functions need time
+  frontend: 60000,   // 60s - full e-commerce UI takes time
+  integrator: 30000, // 30s - wiring frontend to backend
+  qa: 15000,         // 15s - code review
+  devops: 10000,     // 10s - deployment checks
 };
 
-// Maximum total execution time for the entire pipeline (prevents infinite stalls)
-const MAX_PIPELINE_TIMEOUT = 60000; // 60 seconds total - tighter limit
+// Maximum total execution time for the entire pipeline
+const MAX_PIPELINE_TIMEOUT = 180000; // 3 minutes for complex projects
 
 async function callLangdockAssistant(
   agentKey: string,
   message: string,
-  additionalContext?: string
-): Promise<{ content: string; toolCalls: ToolCall[] }> {
+  additionalContext?: string,
+  sendStatus?: (msg: string) => void
+): Promise<{ content: string; toolCalls: ToolCall[]; provider: 'langdock' | 'lovable' }> {
   const apiKeyRaw = Deno.env.get("LANGDOCK_API_KEY");
   const apiKey = apiKeyRaw?.trim().replace(/^Bearer\s+/i, "");
   
+  const notify = (msg: string) => {
+    console.log(`[Agent:${agentKey}] ${msg}`);
+    if (sendStatus) sendStatus(msg);
+  };
+  
   if (!apiKey) {
-    console.log(`[Langdock] No API key, using Lovable AI fallback...`);
-    return callLovableAI(agentKey, message, additionalContext);
+    notify("⚠️ No Langdock API key, using Lovable AI...");
+    const result = await callLovableAI(agentKey, message, additionalContext);
+    return { ...result, provider: 'lovable' };
   }
 
   const envVarName = AGENT_ASSISTANT_ENV_VARS[agentKey];
@@ -627,16 +634,16 @@ async function callLangdockAssistant(
 
   const assistantId = Deno.env.get(envVarName)?.trim();
   if (!assistantId) {
-    console.log(`[Langdock] No assistant ID for ${agentKey}, using Lovable AI fallback...`);
-    return callLovableAI(agentKey, message, additionalContext);
+    notify(`⚠️ No assistant ID for ${agentKey}, using Lovable AI fallback...`);
+    const result = await callLovableAI(agentKey, message, additionalContext);
+    return { ...result, provider: 'lovable' };
   }
 
   const agentPrompt = AGENT_PROMPTS[agentKey as keyof typeof AGENT_PROMPTS] || "";
   const fullMessage = `${agentPrompt}\n\n---\n\nUser Request:\n${message}${additionalContext ? `\n\nAdditional Context:\n${additionalContext}` : ""}`;
 
-  // Use agent-specific timeout (architect = 8s for speed)
   const timeout = AGENT_TIMEOUTS[agentKey] || 30000;
-  console.log(`[Langdock] Calling ${agentKey} (timeout: ${timeout/1000}s), assistantId: ${assistantId.slice(0, 8)}...`);
+  notify(`🚀 Calling Langdock (timeout: ${timeout/1000}s)...`);
   
   try {
     const response = await fetchWithTimeout(LANGDOCK_ASSISTANT_API_URL, {
@@ -661,8 +668,9 @@ async function callLangdockAssistant(
       // These errors trigger fallback to Lovable AI
       const fallbackErrors = [500, 502, 503, 504, 520, 521, 522, 523, 524];
       if (fallbackErrors.includes(response.status)) {
-        console.log(`[Langdock] Server error ${response.status}, switching to Lovable AI fallback...`);
-        return callLovableAI(agentKey, message, additionalContext);
+        notify(`⚠️ Langdock server error ${response.status}, switching to Lovable AI...`);
+        const result = await callLovableAI(agentKey, message, additionalContext);
+        return { ...result, provider: 'lovable' };
       }
       
       // Non-fallback errors
@@ -670,15 +678,17 @@ async function callLangdockAssistant(
         throw new Error("Rate limit exceeded. Please try again in a moment.");
       }
       if (response.status === 401) {
-        console.log(`[Langdock] Auth error, trying Lovable AI fallback...`);
-        return callLovableAI(agentKey, message, additionalContext);
+        notify(`⚠️ Langdock auth error, trying Lovable AI...`);
+        const result = await callLovableAI(agentKey, message, additionalContext);
+        return { ...result, provider: 'lovable' };
       }
       if (response.status === 402) {
         throw new Error("Payment required. Please check your account.");
       }
       if (response.status === 404) {
-        console.log(`[Langdock] Assistant not found, trying Lovable AI fallback...`);
-        return callLovableAI(agentKey, message, additionalContext);
+        notify(`⚠️ Langdock assistant not found, trying Lovable AI...`);
+        const result = await callLovableAI(agentKey, message, additionalContext);
+        return { ...result, provider: 'lovable' };
       }
       throw new Error(`AI call failed: ${response.status} - ${errorText.slice(0, 200)}`);
     }
@@ -713,21 +723,23 @@ async function callLangdockAssistant(
     
     // If no content from Langdock, fallback
     if (!content || content.length < 10) {
-      console.log(`[Langdock] Empty response, switching to Lovable AI fallback...`);
-      return callLovableAI(agentKey, message, additionalContext);
+      notify(`⚠️ Empty Langdock response, switching to Lovable AI...`);
+      const result = await callLovableAI(agentKey, message, additionalContext);
+      return { ...result, provider: 'lovable' };
     }
     
-    console.log(`[Langdock] Extracted content length: ${content.length}`);
+    notify(`✅ Langdock responded (${content.length} chars)`);
     
     const toolCalls = detectToolCalls(content);
     console.log(`[Langdock] Tool calls detected: ${toolCalls.length}`);
 
-    return { content, toolCalls };
+    return { content, toolCalls, provider: 'langdock' };
   } catch (error) {
     // Network errors, timeouts, etc. -> fallback
     console.error(`[Langdock] Error:`, error);
-    console.log(`[Langdock] Network/timeout error, switching to Lovable AI fallback...`);
-    return callLovableAI(agentKey, message, additionalContext);
+    notify(`⚠️ Langdock timeout/error, switching to Lovable AI...`);
+    const result = await callLovableAI(agentKey, message, additionalContext);
+    return { ...result, provider: 'lovable' };
   }
 }
 
@@ -1253,19 +1265,46 @@ class OrchestrationEngine {
   private async transitionTo(phase: AgentPhase, agentKey: string, context: Record<string, unknown>) {
     this.state.phase = phase;
     this.state.currentAgent = agentKey;
-    this.log(agentKey, `Starting ${phase}...`);
+    
+    const agentName = AGENTS[agentKey as keyof typeof AGENTS]?.name || agentKey;
+    
+    // Verbose phase-specific messages
+    const phaseMessages: Record<AgentPhase, string> = {
+      idle: "Preparing...",
+      planning: "Designing architecture...",
+      clarifying: "Gathering requirements...",
+      awaiting_approval: "Waiting for approval...",
+      building_backend: `🔧 ${agentName} is creating database schema, API endpoints, and security policies...`,
+      building_frontend: `🎨 ${agentName} is crafting the UI with premium design patterns...`,
+      integrating: `🔗 ${agentName} is connecting frontend to backend services...`,
+      qa_testing: `🧪 ${agentName} is reviewing code quality and design standards...`,
+      deploying: `🚀 ${agentName} is finalizing deployment configuration...`,
+      complete: "Build complete!",
+      error: "Error occurred.",
+    };
+    
+    const statusMessage = phaseMessages[phase] || `${agentName} working...`;
+    this.log(agentKey, statusMessage);
 
     if (this.agentTasks[agentKey]) {
       this.agentTasks[agentKey].status = "thinking";
-      this.agentTasks[agentKey].statusLabel = "Working...";
+      this.agentTasks[agentKey].statusLabel = statusMessage;
     }
 
+    // Send both agent_status AND agent_message for visibility
     this.send({
       type: "agent_status",
       agent: agentKey,
       status: "thinking",
-      statusLabel: `${AGENTS[agentKey as keyof typeof AGENTS]?.name || agentKey} working...`,
+      statusLabel: statusMessage,
       progress: this.getProgress(),
+    });
+    
+    // Send a chat message so user sees what's happening
+    this.send({
+      type: "agent_message",
+      agent: agentName,
+      message: statusMessage,
     });
 
     await this.executeAgent(agentKey, context, this.originalRequest);
@@ -1459,14 +1498,44 @@ Files: ${this.state.files.length} total (${migrations} migrations, ${edgeFns} ed
       const expectsCode = ["frontend", "integrator"].includes(agentKey);
       let files = extractCodeBlocks(content);
 
-      // Fallback for frontend
+      // Fallback for frontend - NEVER allow blank preview
       if (agentKey === "frontend" && files.length === 0) {
         console.log(`[Orchestration] Frontend returned no code, using stunning fallback...`);
+        
+        // Notify user we're using fallback
+        this.send({
+          type: "agent_message",
+          agent: "Frontend",
+          message: "⚠️ The AI didn't generate code in expected format. Using a premium fallback template. You can refine it with specific requests.",
+        });
+        
         const fallbackHtml = generateFallbackHtml(
           this.state.plan?.projectName || "Generated Project",
           this.state.plan?.description || this.originalRequest || "A beautiful landing page"
         );
         files = [{ filename: "index.html", path: "index.html", content: fallbackHtml, language: "html", type: "frontend" }];
+      }
+
+      // Double-check: If we still have no files for frontend, generate error HTML
+      if (agentKey === "frontend" && files.length === 0) {
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generation Error</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-slate-950 flex items-center justify-center">
+  <div class="text-center p-8">
+    <div class="text-6xl mb-6">⚠️</div>
+    <h1 class="text-3xl font-bold text-white mb-4">Generation Issue</h1>
+    <p class="text-slate-400 mb-6 max-w-md">The AI couldn't generate your design this time. Try being more specific or use the Refine panel to describe what you want.</p>
+    <button onclick="location.reload()" class="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Try Again</button>
+  </div>
+</body>
+</html>`;
+        files = [{ filename: "index.html", path: "index.html", content: errorHtml, language: "html", type: "frontend" }];
       }
 
       if (expectsCode && files.length === 0) {

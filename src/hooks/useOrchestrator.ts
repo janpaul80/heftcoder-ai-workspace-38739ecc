@@ -7,10 +7,10 @@ const ORCHESTRATOR_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/orch
 
 // Job polling interval (ms)
 const POLL_INTERVAL = 1500;
-const MAX_POLL_TIME = 120000; // 2 minutes max
+const MAX_POLL_TIME = 240000; // 4 minutes max for complex builds
 
 // Stream timeout - if no data received for this long, consider it stalled
-const STREAM_TIMEOUT = 30000; // 30 seconds without data = stalled (reduced from 60s)
+const STREAM_TIMEOUT = 90000; // 90 seconds - aligned with increased backend timeouts
 
 interface PlanningJob {
   id: string;
