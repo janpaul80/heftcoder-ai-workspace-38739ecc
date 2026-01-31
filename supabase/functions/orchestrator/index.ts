@@ -2044,30 +2044,75 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const encoder = new TextEncoder();
+    let streamClosed = false;
+    
     const body = new ReadableStream({
       async start(controller) {
+        // Safe send function that checks if stream is closed
         const send = (data: object) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          if (streamClosed) {
+            console.log(`[Stream] Ignoring send after close:`, (data as { type?: string }).type || 'unknown');
+            return;
+          }
+          try {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+          } catch (err) {
+            console.error(`[Stream] Enqueue error:`, err);
+            streamClosed = true;
+          }
         };
 
         const orchestrator = new OrchestrationEngine(send);
+        
+        // Pipeline timeout wrapper to prevent indefinite stalls
+        const pipelineTimeout = new Promise<void>((_, reject) => {
+          setTimeout(() => {
+            reject(new Error("Pipeline execution timed out after 60 seconds"));
+          }, MAX_PIPELINE_TIMEOUT);
+        });
 
-        if (action === "plan") {
-          // Original streaming plan (kept for compatibility, but slower)
-          await orchestrator.startPlanning(message);
-        } else if (action === "execute") {
-          await orchestrator.startExecution(message, plan as ProjectPlan);
-        } else if (action === "refine") {
-          await orchestrator.handleRefine(message, currentCode, plan as ProjectPlan);
-        } else if (action === "question") {
-          await orchestrator.answerQuestion(message, plan as ProjectPlan);
-        } else {
-          send({ type: "error", message: "Unknown action" });
+        try {
+          const executeAction = async () => {
+            if (action === "plan") {
+              await orchestrator.startPlanning(message);
+            } else if (action === "execute") {
+              await orchestrator.startExecution(message, plan as ProjectPlan);
+            } else if (action === "refine") {
+              await orchestrator.handleRefine(message, currentCode, plan as ProjectPlan);
+            } else if (action === "question") {
+              await orchestrator.answerQuestion(message, plan as ProjectPlan);
+            } else {
+              send({ type: "error", message: "Unknown action" });
+            }
+          };
+
+          // Race between execution and timeout
+          await Promise.race([executeAction(), pipelineTimeout]);
+          
+        } catch (err) {
+          console.error(`[Orchestration] Execution timeout or error:`, err);
+          send({ 
+            type: "error", 
+            message: err instanceof Error ? err.message : "Execution failed",
+            build: BUILD_ID,
+          });
         }
 
-        send({ type: "[DONE]" });
-        controller.close();
+        // Safely close the stream
+        if (!streamClosed) {
+          send({ type: "[DONE]" });
+          streamClosed = true;
+          try {
+            controller.close();
+          } catch {
+            // Already closed
+          }
+        }
       },
+      cancel() {
+        console.log(`[Stream] Client cancelled connection`);
+        streamClosed = true;
+      }
     });
 
     return new Response(body, {
