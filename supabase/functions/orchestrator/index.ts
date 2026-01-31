@@ -1122,12 +1122,13 @@ function escapeHtml(text: string): string {
 
 class OrchestrationEngine {
   private state: OrchestrationState;
-  private send: (data: object) => void;
+  private sendFn: (data: object) => void;
   private agentTasks: Record<string, AgentTask> = {};
   private originalRequest: string = "";
+  private isClosed: boolean = false;
 
   constructor(send: (data: object) => void) {
-    this.send = send;
+    this.sendFn = send;
     this.state = {
       phase: "idle",
       currentAgent: null,
@@ -1135,6 +1136,25 @@ class OrchestrationEngine {
       files: [],
       executionLog: [],
     };
+  }
+
+  // Safe send that prevents errors after stream closure
+  private send(data: object): void {
+    if (this.isClosed) {
+      console.log(`[Orchestration] Ignoring send after close:`, (data as { type?: string }).type || 'unknown');
+      return;
+    }
+    try {
+      this.sendFn(data);
+    } catch (err) {
+      console.error(`[Orchestration] Send error, marking closed:`, err);
+      this.isClosed = true;
+    }
+  }
+
+  // Call this to mark engine as done (prevents further sends)
+  public close(): void {
+    this.isClosed = true;
   }
 
   private log(agent: string, message: string) {
@@ -2091,6 +2111,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
           
         } catch (err) {
           console.error(`[Orchestration] Execution timeout or error:`, err);
+          orchestrator.close(); // Mark engine as closed to prevent further sends
           send({ 
             type: "error", 
             message: err instanceof Error ? err.message : "Execution failed",
@@ -2098,6 +2119,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
           });
         }
 
+        // Mark orchestrator as done before closing stream
+        orchestrator.close();
+        
         // Safely close the stream
         if (!streamClosed) {
           send({ type: "[DONE]" });
