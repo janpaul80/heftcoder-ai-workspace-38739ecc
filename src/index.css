@@ -16,105 +16,121 @@
   animation: shimmer 2s infinite;
 }
 
-/* HeftCoder Design System - Dark Theme */
+/* ═══════════════════════════════════════════════════════════════════════════
+   HeftCoder Elite Design System — Premium Dark Theme
+   
+   Aesthetic: Vercel / Linear / Framer — calm, confident, minimal, high-end
+   NO neon, NO flashy gradients, NO crypto-bro vibes
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 @layer base {
   :root {
-    /* Dark theme by default */
-    --background: 0 0% 7%;
-    --foreground: 0 0% 95%;
+    /* ─────────────────────────────────────────────────────────────────────────
+       Pure Dark Foundation — Near-black with subtle warmth
+       ───────────────────────────────────────────────────────────────────────── */
+    --background: 0 0% 4%;           /* Pure near-black */
+    --foreground: 0 0% 93%;          /* Soft white, not harsh */
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 95%;
+    --card: 0 0% 6%;                 /* Slightly elevated surface */
+    --card-foreground: 0 0% 93%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 93%;
 
-    /* Orange primary - HeftCoder brand */
-    --primary: 25 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    /* ─────────────────────────────────────────────────────────────────────────
+       Primary — Clean white/light gray for CTAs (Vercel-style)
+       Subtle, not loud. Confident, not desperate.
+       ───────────────────────────────────────────────────────────────────────── */
+    --primary: 0 0% 100%;            /* Pure white primary */
+    --primary-foreground: 0 0% 4%;   /* Dark text on white */
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 0 0% 10%;           /* Deep charcoal */
+    --secondary-foreground: 0 0% 80%;
 
-    --muted: 0 0% 18%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 0 0% 12%;               /* Muted dark gray */
+    --muted-foreground: 0 0% 50%;    /* Subdued text */
 
-    --accent: 25 100% 50%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent — Subtle blue-gray, not flashy */
+    --accent: 220 10% 15%;
+    --accent-foreground: 0 0% 93%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 60% 50%;        /* Muted red, not neon */
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 14%;
-    --ring: 25 100% 50%;
+    --border: 0 0% 12%;              /* Subtle borders */
+    --input: 0 0% 8%;
+    --ring: 0 0% 40%;                /* Subtle focus ring */
 
     --radius: 0.5rem;
 
-    /* Custom workspace tokens */
-    --workspace-bg: 0 0% 5%;
-    --panel-bg: 0 0% 8%;
-    --panel-border: 0 0% 15%;
-    --chat-bubble-user: 25 100% 50%;
-    --chat-bubble-ai: 0 0% 12%;
-    --input-bg: 0 0% 12%;
-    --divider: 0 0% 20%;
-    --status-glow: 25 100% 50%;
+    /* ─────────────────────────────────────────────────────────────────────────
+       Workspace Tokens — Premium dark surfaces
+       ───────────────────────────────────────────────────────────────────────── */
+    --workspace-bg: 0 0% 3%;         /* Deepest black */
+    --panel-bg: 0 0% 5%;             /* Panel surfaces */
+    --panel-border: 0 0% 10%;        /* Very subtle borders */
+    --chat-bubble-user: 0 0% 12%;    /* User messages — dark, not colored */
+    --chat-bubble-ai: 0 0% 8%;       /* AI messages */
+    --input-bg: 0 0% 7%;
+    --divider: 0 0% 14%;
+    --status-glow: 0 0% 60%;         /* Subtle white glow, no color */
 
-    /* Model colors */
-    --claude-color: 25 60% 55%;
-    --openai-color: 142 70% 45%;
-    --mistral-color: 210 80% 55%;
-    --heft-color: 25 100% 50%;
+    /* ─────────────────────────────────────────────────────────────────────────
+       Model Colors — Muted, professional tones
+       ───────────────────────────────────────────────────────────────────────── */
+    --claude-color: 30 15% 50%;      /* Warm neutral */
+    --openai-color: 160 20% 45%;     /* Muted teal */
+    --mistral-color: 220 20% 50%;    /* Slate blue */
+    --heft-color: 0 0% 70%;          /* Clean silver */
 
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 25 100% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 14%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 25 100% 50%;
+    /* Sidebar */
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 10%;
+    --sidebar-ring: 0 0% 40%;
   }
 
   .dark {
-    --background: 0 0% 7%;
-    --foreground: 0 0% 95%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 93%;
 
-    --card: 0 0% 10%;
-    --card-foreground: 0 0% 95%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 93%;
 
-    --popover: 0 0% 10%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 93%;
 
-    --primary: 25 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 4%;
 
-    --secondary: 0 0% 14%;
-    --secondary-foreground: 0 0% 85%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 80%;
 
-    --muted: 0 0% 18%;
-    --muted-foreground: 0 0% 60%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 50%;
 
-    --accent: 25 100% 50%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 10% 15%;
+    --accent-foreground: 0 0% 93%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 60% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 14%;
-    --ring: 25 100% 50%;
+    --border: 0 0% 12%;
+    --input: 0 0% 8%;
+    --ring: 0 0% 40%;
 
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 95%;
-    --sidebar-primary: 25 100% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 14%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 25 100% 50%;
+    --sidebar-background: 0 0% 4%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 0% 4%;
+    --sidebar-accent: 0 0% 10%;
+    --sidebar-accent-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 10%;
+    --sidebar-ring: 0 0% 40%;
   }
 }
 
